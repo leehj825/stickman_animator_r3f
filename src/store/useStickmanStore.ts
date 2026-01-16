@@ -7,9 +7,10 @@ import { Vector3 } from 'three';
 
 interface StickmanState {
   currentSkeleton: StickmanSkeleton;
-  currentClip: StickmanClip;
+  clips: StickmanClip[];
+  activeClipId: string;
   isPlaying: boolean;
-  currentTime: number; // in seconds
+  currentTime: number;
   editMode: boolean;
   selectedNodeId: string | null;
 
@@ -22,157 +23,208 @@ interface StickmanState {
   loadProject: (json: string) => void;
   saveProject: () => string;
   setCurrentTime: (time: number) => void;
+
+  // Playlist Actions
+  setActiveClip: (id: string) => void;
+  addClip: () => void;
+  updateClipName: (id: string, name: string) => void;
 }
 
-export const useStickmanStore = create<StickmanState>((set, get) => ({
-  currentSkeleton: new StickmanSkeleton(),
-  currentClip: {
+export const useStickmanStore = create<StickmanState>((set, get) => {
+  // Helper to create a default clip
+  const createDefaultClip = (): StickmanClip => ({
     id: uuidv4(),
-    name: 'default',
+    name: 'New Animation',
     keyframes: [],
     duration: 5,
-  },
-  isPlaying: false,
-  currentTime: 0,
-  editMode: true,
-  selectedNodeId: null,
+  });
 
-  togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
+  const defaultClip = createDefaultClip();
 
-  setEditMode: (enabled) => set({ editMode: enabled }),
+  return {
+    currentSkeleton: new StickmanSkeleton(),
+    clips: [defaultClip],
+    activeClipId: defaultClip.id,
+    isPlaying: false,
+    currentTime: 0,
+    editMode: true,
+    selectedNodeId: null,
 
-  selectNode: (id) => set({ selectedNodeId: id }),
+    togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
 
-  updateNodePosition: (id, position) => {
-    const { currentSkeleton } = get();
-    currentSkeleton.updateNodePosition(id, position);
-    // Force reactivity by cloning the container (lightweight)
-    set({ currentSkeleton: currentSkeleton });
-  },
+    setEditMode: (enabled) => set({ editMode: enabled }),
 
-  addKeyframe: () => {
-    const { currentSkeleton, currentClip, currentTime } = get();
-    const newKeyframe: StickmanKeyframe = {
-      id: uuidv4(),
-      skeleton: currentSkeleton.clone(),
-      timestamp: currentTime,
-    };
-    const newKeyframes = [...currentClip.keyframes, newKeyframe].sort((a, b) => a.timestamp - b.timestamp);
-    set({
-      currentClip: { ...currentClip, keyframes: newKeyframes }
-    });
-  },
+    selectNode: (id) => set({ selectedNodeId: id }),
 
-  loadProject: (json) => {
-      try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const data = JSON.parse(json);
-          // Handle generic project structure or raw legacy structure
-          const clipsData = data.clips || (data.keyframes ? [data] : []);
+    setActiveClip: (id) => {
+        const { clips } = get();
+        const clip = clips.find(c => c.id === id);
+        if (clip) {
+            // Restore the first keyframe of the clip to the skeleton if it exists
+            const startSkeleton = clip.keyframes.length > 0
+                ? clip.keyframes[0].skeleton.clone()
+                : new StickmanSkeleton();
 
-          if (clipsData.length > 0) {
-              const loadedClip = clipsData[0];
+            set({
+                activeClipId: id,
+                currentSkeleton: startSkeleton,
+                currentTime: 0,
+                isPlaying: false
+            });
+        }
+    },
 
-              // RECONSTRUCTION LOGIC
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const reconstructNode = (nodeData: any): StickmanNode => {
-                  const pos = new Vector3();
+    addClip: () => {
+        const newClip = createDefaultClip();
+        set(state => ({
+            clips: [...state.clips, newClip],
+            activeClipId: newClip.id,
+            currentTime: 0,
+            isPlaying: false
+        }));
+    },
 
-                  // HANDLE FLUTTER .SAP FORMAT (pos: [x, y, z])
-                  if (Array.isArray(nodeData.pos)) {
-                      pos.set(nodeData.pos[0], nodeData.pos[1], nodeData.pos[2]);
-                  }
-                  // HANDLE R3F FORMAT (position: {x,y,z})
-                  else if (nodeData.position) {
-                      pos.copy(nodeData.position);
-                  }
+    updateClipName: (id, name) => {
+        set(state => ({
+            clips: state.clips.map(c => c.id === id ? { ...c, name } : c)
+        }));
+    },
 
-                  const node = new StickmanNode(nodeData.id || nodeData.name, pos, nodeData.id);
+    updateNodePosition: (id, position) => {
+      const { currentSkeleton } = get();
+      currentSkeleton.updateNodePosition(id, position);
+      set({ currentSkeleton: currentSkeleton }); // Force update
+    },
 
-                  if (nodeData.children) {
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      nodeData.children.forEach((childData: any) => {
-                          node.addChild(reconstructNode(childData));
-                      });
-                  }
-                  return node;
-              };
+    addKeyframe: () => {
+      const { currentSkeleton, clips, activeClipId, currentTime } = get();
 
-              // Reconstruct Keyframes
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const reconstructedKeyframes = loadedClip.keyframes.map((kf: any) => {
-                  // Handle skeleton data inside keyframe
-                  const skelData = kf.pose || kf.skeleton; // 'pose' in Dart, 'skeleton' in TS
-                  const skeleton = new StickmanSkeleton(undefined,
-                      skelData.headRadius || data.headRadius,
-                      skelData.strokeWidth || data.strokeWidth
-                  );
-                  skeleton.root = reconstructNode(skelData.root || skelData);
+      const activeClip = clips.find(c => c.id === activeClipId);
+      if (!activeClip) return;
 
-                  return {
-                      id: kf.id || uuidv4(),
-                      timestamp: kf.timestamp || (kf.frameIndex ? kf.frameIndex / 30.0 : 0), // Fallback for frameIndex
-                      skeleton: skeleton
-                  };
-              });
+      const newKeyframe: StickmanKeyframe = {
+        id: uuidv4(),
+        skeleton: currentSkeleton.clone(),
+        timestamp: currentTime,
+      };
 
-              const newClip: StickmanClip = {
-                  id: loadedClip.id || uuidv4(),
-                  name: loadedClip.name || "Imported Clip",
-                  duration: loadedClip.duration || 5.0,
-                  keyframes: reconstructedKeyframes
-              };
+      const newKeyframes = [...activeClip.keyframes, newKeyframe].sort((a, b) => a.timestamp - b.timestamp);
 
-              // Initial Skeleton state
-              const firstFrameSkeleton = reconstructedKeyframes.length > 0 ? reconstructedKeyframes[0].skeleton.clone() : new StickmanSkeleton();
+      const updatedClips = clips.map(c =>
+          c.id === activeClipId ? { ...c, keyframes: newKeyframes } : c
+      );
 
-              if (data.headRadius !== undefined) firstFrameSkeleton.headRadius = data.headRadius;
-              if (data.strokeWidth !== undefined) firstFrameSkeleton.strokeWidth = data.strokeWidth;
+      set({ clips: updatedClips });
+    },
 
-              set({
-                  currentClip: newClip,
-                  currentSkeleton: firstFrameSkeleton,
-                  currentTime: 0
-              });
-              console.log("Project loaded successfully");
-          }
-      } catch (e) {
-          console.error("Failed to load project", e);
-          alert("Failed to load project file. Check console for details.");
-      }
-  },
+    loadProject: (json) => {
+        try {
+            const data = JSON.parse(json);
+            const clipsData = data.clips || (data.keyframes ? [data] : []);
 
-  saveProject: () => {
-      const { currentClip, currentSkeleton } = get();
+            if (clipsData.length === 0) return;
 
-      // Helper to serialize node to match .sap format roughly
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const serializeNode = (node: StickmanNode): any => ({
-          id: node.id,
-          pos: [node.position.x, node.position.y, node.position.z], // Save as Array for compatibility
-          children: node.children.map(serializeNode)
-      });
+            // SCALING FACTORS to fix "Too Large" and "Upside Down"
+            const SCALE = 0.1;
+            const INVERT_Y = -1;
 
-      const serializedKeyframes = currentClip.keyframes.map(kf => ({
-          id: kf.id,
-          timestamp: kf.timestamp,
-          pose: { // Use 'pose' to match Dart logic
-              root: serializeNode(kf.skeleton.root),
-              headRadius: kf.skeleton.headRadius,
-              strokeWidth: kf.skeleton.strokeWidth
-          }
-      }));
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const reconstructNode = (nodeData: any): StickmanNode => {
+                const pos = new Vector3();
+                if (Array.isArray(nodeData.pos)) {
+                    // Apply Fix: Scale and Invert Y
+                    pos.set(
+                        nodeData.pos[0] * SCALE,
+                        nodeData.pos[1] * SCALE * INVERT_Y,
+                        nodeData.pos[2] * SCALE
+                    );
+                } else if (nodeData.position) {
+                    pos.copy(nodeData.position);
+                }
+                const node = new StickmanNode(nodeData.id || nodeData.name, pos, nodeData.id);
+                if (nodeData.children) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    nodeData.children.forEach((childData: any) => node.addChild(reconstructNode(childData)));
+                }
+                return node;
+            };
 
-      return JSON.stringify({
-          version: 1,
-          headRadius: currentSkeleton.headRadius,
-          strokeWidth: currentSkeleton.strokeWidth,
-          clips: [{
-              ...currentClip,
-              keyframes: serializedKeyframes
-          }]
-      });
-  },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const reconstructedClips: StickmanClip[] = clipsData.map((clipData: any) => ({
+                id: clipData.id || uuidv4(),
+                name: clipData.name || "Imported Animation",
+                duration: clipData.duration || 5.0,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                keyframes: (clipData.keyframes || []).map((kf: any) => {
+                    const skelData = kf.pose || kf.skeleton;
+                    const skeleton = new StickmanSkeleton(
+                        undefined,
+                        (skelData.headRadius || data.headRadius || 6.0) * SCALE, // Scale visuals too
+                        (skelData.strokeWidth || data.strokeWidth || 4.6) * SCALE
+                    );
+                    skeleton.root = reconstructNode(skelData.root || skelData);
+                    return {
+                        id: kf.id || uuidv4(),
+                        timestamp: kf.timestamp || (kf.frameIndex ? kf.frameIndex / 30.0 : 0),
+                        skeleton: skeleton
+                    };
+                })
+            }));
 
-  setCurrentTime: (time) => set({ currentTime: time }),
-}));
+            // Set State
+            const firstClip = reconstructedClips[0];
+            const startSkel = firstClip.keyframes.length > 0
+                ? firstClip.keyframes[0].skeleton.clone()
+                : new StickmanSkeleton(); // Should also apply scale to default if needed
+
+            set({
+                clips: reconstructedClips,
+                activeClipId: firstClip.id,
+                currentSkeleton: startSkel,
+                currentTime: 0,
+                isPlaying: false
+            });
+            console.log("Project loaded with Scale correction.");
+
+        } catch (e) {
+            console.error("Failed to load project", e);
+            alert("Error loading file.");
+        }
+    },
+
+    saveProject: () => {
+        const { clips, currentSkeleton } = get();
+        // Undo scaling for save? Or keep as new format?
+        // Let's keep the R3F format as the new standard (no un-scaling).
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const serializeNode = (node: StickmanNode): any => ({
+            id: node.id,
+            pos: [node.position.x, node.position.y, node.position.z],
+            children: node.children.map(serializeNode)
+        });
+
+        const serializedClips = clips.map(clip => ({
+            ...clip,
+            keyframes: clip.keyframes.map(kf => ({
+                id: kf.id,
+                timestamp: kf.timestamp,
+                pose: {
+                    root: serializeNode(kf.skeleton.root),
+                    headRadius: kf.skeleton.headRadius,
+                    strokeWidth: kf.skeleton.strokeWidth
+                }
+            }))
+        }));
+
+        return JSON.stringify({
+            version: 2,
+            clips: serializedClips,
+            headRadius: currentSkeleton.headRadius,
+            strokeWidth: currentSkeleton.strokeWidth,
+        });
+    },
+
+    setCurrentTime: (time) => set({ currentTime: time }),
+  };
+});

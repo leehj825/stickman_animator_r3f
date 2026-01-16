@@ -139,10 +139,13 @@ const StickmanRecursive = ({ node, headRadius, strokeWidth }: { node: StickmanNo
 
 // Component to handle playback loop
 const PlaybackController = () => {
-    const { isPlaying, currentClip, currentTime, setCurrentTime, currentSkeleton } = useStickmanStore();
+    const { isPlaying, clips, activeClipId, currentTime, setCurrentTime, currentSkeleton } = useStickmanStore();
+
+    // Derived current clip
+    const currentClip = clips.find(c => c.id === activeClipId);
 
     useFrame((_state, delta) => {
-        if (isPlaying) {
+        if (isPlaying && currentClip) {
             let newTime = currentTime + delta;
             if (newTime > currentClip.duration) {
                 newTime = 0; // Loop
