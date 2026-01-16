@@ -1,0 +1,59 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout Code
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # 2. Setup Node.js (for React/Vite build)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 3. Setup Java (for Android Gradle build)
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 4. Setup Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 5. Install Dependencies & Build Web Assets
+      - name: Install & Build Web
+        run: |
+          npm ci
+          npm run build
+
+      # 6. Initialize & Sync Capacitor
+      - name: Sync Capacitor
+        run: |
+          npx cap add android || true
+          npx cap sync android
+
+      # 7. Build APK with Gradle
+      - name: Build Debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      # 8. Upload Artifact
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: stickman-r3f-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
