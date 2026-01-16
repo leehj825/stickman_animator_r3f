@@ -1,8 +1,8 @@
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, TransformControls, Sphere, Cylinder } from '@react-three/drei';
+import { OrbitControls, TransformControls, Sphere } from '@react-three/drei';
 import { useStickmanStore } from '../store/useStickmanStore';
 import { StickmanNode } from '../core/StickmanNode';
-import { Object3D, Vector3, Quaternion, Matrix4 } from 'three';
+import { Object3D, Vector3, Quaternion } from 'three';
 import { useRef, useMemo } from 'react';
 
 // JointNode: A sphere at the joint position
@@ -66,7 +66,6 @@ const BoneSegment = ({ startNode, endNode, thickness }: { startNode: StickmanNod
     const meshRef = useRef<any>(null);
 
     // We reuse vectors/matrices to avoid GC
-    const dummy = useMemo(() => new Object3D(), []);
     const axis = useMemo(() => new Vector3(0, 1, 0), []); // Cylinder default up axis
     const startVec = useMemo(() => new Vector3(), []);
     const endVec = useMemo(() => new Vector3(), []);
