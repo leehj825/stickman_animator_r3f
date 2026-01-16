@@ -41,38 +41,31 @@ export class StickmanSkeleton {
     torso.addChild(neck);
     neck.addChild(head);
 
-    // Arms
-    const leftShoulder = new StickmanNode('leftShoulder', new Vector3(-0.3, 1.7, 0));
-    const leftElbow = new StickmanNode('leftElbow', new Vector3(-0.6, 1.4, 0));
-    const leftHand = new StickmanNode('leftHand', new Vector3(-0.8, 1.1, 0));
+    // Arms (Connected directly to Neck, per your request)
+    // Adjusted positions slightly to look natural without shoulders
+    const leftElbow = new StickmanNode('leftElbow', new Vector3(-0.3, 1.4, 0));
+    const leftHand = new StickmanNode('leftHand', new Vector3(-0.5, 1.1, 0));
 
-    const rightShoulder = new StickmanNode('rightShoulder', new Vector3(0.3, 1.7, 0));
-    const rightElbow = new StickmanNode('rightElbow', new Vector3(0.6, 1.4, 0));
-    const rightHand = new StickmanNode('rightHand', new Vector3(0.8, 1.1, 0));
+    const rightElbow = new StickmanNode('rightElbow', new Vector3(0.3, 1.4, 0));
+    const rightHand = new StickmanNode('rightHand', new Vector3(0.5, 1.1, 0));
 
-    neck.addChild(leftShoulder);
-    leftShoulder.addChild(leftElbow);
+    neck.addChild(leftElbow);
     leftElbow.addChild(leftHand);
 
-    neck.addChild(rightShoulder);
-    rightShoulder.addChild(rightElbow);
+    neck.addChild(rightElbow);
     rightElbow.addChild(rightHand);
 
-    // Legs
-    const leftHipJoint = new StickmanNode('leftHipJoint', new Vector3(-0.2, 0.9, 0));
-    const leftKnee = new StickmanNode('leftKnee', new Vector3(-0.25, 0.5, 0));
-    const leftFoot = new StickmanNode('leftFoot', new Vector3(-0.3, 0.1, 0));
+    // Legs (Connected directly to Hip)
+    const leftKnee = new StickmanNode('leftKnee', new Vector3(-0.2, 0.5, 0));
+    const leftFoot = new StickmanNode('leftFoot', new Vector3(-0.25, 0.1, 0));
 
-    const rightHipJoint = new StickmanNode('rightHipJoint', new Vector3(0.2, 0.9, 0));
-    const rightKnee = new StickmanNode('rightKnee', new Vector3(0.25, 0.5, 0));
-    const rightFoot = new StickmanNode('rightFoot', new Vector3(0.3, 0.1, 0));
+    const rightKnee = new StickmanNode('rightKnee', new Vector3(0.2, 0.5, 0));
+    const rightFoot = new StickmanNode('rightFoot', new Vector3(0.25, 0.1, 0));
 
-    hip.addChild(leftHipJoint);
-    leftHipJoint.addChild(leftKnee);
+    hip.addChild(leftKnee);
     leftKnee.addChild(leftFoot);
 
-    hip.addChild(rightHipJoint);
-    rightHipJoint.addChild(rightKnee);
+    hip.addChild(rightKnee);
     rightKnee.addChild(rightFoot);
 
     return hip;
@@ -106,7 +99,7 @@ export class StickmanSkeleton {
     }
   }
 
-  // Helper to get all nodes as a flat list (redundant with getter but kept for compatibility if needed)
+  // Helper to get all nodes as a flat list
   getAllNodes(): StickmanNode[] {
       return this.nodes;
   }

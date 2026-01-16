@@ -12,9 +12,16 @@ export const EditorUI = () => {
 
   const handleSave = () => {
       const json = saveProject();
-      console.log(json);
-      // In a real app, trigger download or save to file
-      alert("Project JSON logged to console");
+
+      // Trigger File Download
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `stickman_project_${Date.now()}.sap`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
   };
 
   const handleLoad = () => {

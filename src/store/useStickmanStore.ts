@@ -30,7 +30,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => ({
     id: uuidv4(),
     name: 'default',
     keyframes: [],
-    duration: 5, // default 5 seconds
+    duration: 5,
   },
   isPlaying: false,
   currentTime: 0,
@@ -45,21 +45,8 @@ export const useStickmanStore = create<StickmanState>((set, get) => ({
 
   updateNodePosition: (id, position) => {
     const { currentSkeleton } = get();
-    // We modify the current skeleton directly for performance in this demo,
-    // but in a real app we might want immutability.
-    // However, since StickmanSkeleton is a class, we need to trigger a re-render
-    // or use a strategy to notify subscribers.
-    // Here we will clone for React reactivity if needed, or just notify.
-
-    // Actually, let's mutate and create a new reference to trigger update
     currentSkeleton.updateNodePosition(id, position);
-
-    // For Zustand to pick up the change, we might need to shallow clone the skeleton container
-    // or just rely on R3F useFrame to pick up changes if we are not strictly reactive on the skeleton structure.
-    // But for the Editor UI, we probably want reactivity.
-
-    // Let's create a new skeleton reference wrapper if needed, but for now:
-    // We are mutating the deep object. To trigger re-render in UI:
+    // Force reactivity by cloning the container (lightweight)
     set({ currentSkeleton: currentSkeleton });
   },
 
@@ -70,15 +57,9 @@ export const useStickmanStore = create<StickmanState>((set, get) => ({
       skeleton: currentSkeleton.clone(),
       timestamp: currentTime,
     };
-
-    // Insert sorted by time
     const newKeyframes = [...currentClip.keyframes, newKeyframe].sort((a, b) => a.timestamp - b.timestamp);
-
     set({
-      currentClip: {
-        ...currentClip,
-        keyframes: newKeyframes
-      }
+      currentClip: { ...currentClip, keyframes: newKeyframes }
     });
   },
 
@@ -86,75 +67,110 @@ export const useStickmanStore = create<StickmanState>((set, get) => ({
       try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const data = JSON.parse(json);
+          // Handle generic project structure or raw legacy structure
+          const clipsData = data.clips || (data.keyframes ? [data] : []);
 
-          if (data.clips && Array.isArray(data.clips) && data.clips.length > 0) {
-              const loadedClip = data.clips[0]; // Load the first clip for now
+          if (clipsData.length > 0) {
+              const loadedClip = clipsData[0];
 
-              // Reconstruct keysframes and skeletons
+              // RECONSTRUCTION LOGIC
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const reconstructNode = (nodeData: any): StickmanNode => {
+                  const pos = new Vector3();
+
+                  // HANDLE FLUTTER .SAP FORMAT (pos: [x, y, z])
+                  if (Array.isArray(nodeData.pos)) {
+                      pos.set(nodeData.pos[0], nodeData.pos[1], nodeData.pos[2]);
+                  }
+                  // HANDLE R3F FORMAT (position: {x,y,z})
+                  else if (nodeData.position) {
+                      pos.copy(nodeData.position);
+                  }
+
+                  const node = new StickmanNode(nodeData.id || nodeData.name, pos, nodeData.id);
+
+                  if (nodeData.children) {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      nodeData.children.forEach((childData: any) => {
+                          node.addChild(reconstructNode(childData));
+                      });
+                  }
+                  return node;
+              };
+
+              // Reconstruct Keyframes
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const reconstructedKeyframes = loadedClip.keyframes.map((kf: any) => {
-                  // Reconstruct with global properties if available in the clip or keyframe data?
-                  // The prompt implies properties might be top-level or on the skeleton.
-                  // For now, we use defaults or load if saved on skeleton.
-                  const skeleton = new StickmanSkeleton(undefined, kf.skeleton.headRadius, kf.skeleton.strokeWidth);
+                  // Handle skeleton data inside keyframe
+                  const skelData = kf.pose || kf.skeleton; // 'pose' in Dart, 'skeleton' in TS
+                  const skeleton = new StickmanSkeleton(undefined,
+                      skelData.headRadius || data.headRadius,
+                      skelData.strokeWidth || data.strokeWidth
+                  );
+                  skeleton.root = reconstructNode(skelData.root || skelData);
 
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const reconstructNode = (nodeData: any): StickmanNode => {
-                      const pos = new Vector3(nodeData.position.x, nodeData.position.y, nodeData.position.z);
-                      const node = new StickmanNode(nodeData.name, pos, nodeData.id);
-                      if (nodeData.children) {
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          nodeData.children.forEach((childData: any) => {
-                              node.addChild(reconstructNode(childData));
-                          });
-                      }
-                      return node;
-                  };
-
-                  skeleton.root = reconstructNode(kf.skeleton.root);
                   return {
-                      id: kf.id,
-                      timestamp: kf.timestamp,
+                      id: kf.id || uuidv4(),
+                      timestamp: kf.timestamp || (kf.frameIndex ? kf.frameIndex / 30.0 : 0), // Fallback for frameIndex
                       skeleton: skeleton
                   };
               });
 
               const newClip: StickmanClip = {
-                  id: loadedClip.id,
-                  name: loadedClip.name,
-                  duration: loadedClip.duration,
+                  id: loadedClip.id || uuidv4(),
+                  name: loadedClip.name || "Imported Clip",
+                  duration: loadedClip.duration || 5.0,
                   keyframes: reconstructedKeyframes
               };
 
-              // Update current skeleton to match the first frame, ensuring properties are set
-              const firstFrameSkeleton = reconstructedKeyframes.length > 0 ? reconstructedKeyframes[0].skeleton : new StickmanSkeleton();
-              const newCurrentSkeleton = firstFrameSkeleton.clone();
+              // Initial Skeleton state
+              const firstFrameSkeleton = reconstructedKeyframes.length > 0 ? reconstructedKeyframes[0].skeleton.clone() : new StickmanSkeleton();
 
-              // If global properties were in the JSON root (as implied by "{ clips: [], headRadius: 6.0 ... }")
-              // we should override them.
-              if (data.headRadius !== undefined) newCurrentSkeleton.headRadius = data.headRadius;
-              if (data.strokeWidth !== undefined) newCurrentSkeleton.strokeWidth = data.strokeWidth;
+              if (data.headRadius !== undefined) firstFrameSkeleton.headRadius = data.headRadius;
+              if (data.strokeWidth !== undefined) firstFrameSkeleton.strokeWidth = data.strokeWidth;
 
               set({
                   currentClip: newClip,
-                  currentSkeleton: newCurrentSkeleton,
+                  currentSkeleton: firstFrameSkeleton,
                   currentTime: 0
               });
-
               console.log("Project loaded successfully");
           }
       } catch (e) {
           console.error("Failed to load project", e);
+          alert("Failed to load project file. Check console for details.");
       }
   },
 
   saveProject: () => {
       const { currentClip, currentSkeleton } = get();
-      // Serialization logic
+
+      // Helper to serialize node to match .sap format roughly
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const serializeNode = (node: StickmanNode): any => ({
+          id: node.id,
+          pos: [node.position.x, node.position.y, node.position.z], // Save as Array for compatibility
+          children: node.children.map(serializeNode)
+      });
+
+      const serializedKeyframes = currentClip.keyframes.map(kf => ({
+          id: kf.id,
+          timestamp: kf.timestamp,
+          pose: { // Use 'pose' to match Dart logic
+              root: serializeNode(kf.skeleton.root),
+              headRadius: kf.skeleton.headRadius,
+              strokeWidth: kf.skeleton.strokeWidth
+          }
+      }));
+
       return JSON.stringify({
-          clips: [currentClip],
+          version: 1,
           headRadius: currentSkeleton.headRadius,
           strokeWidth: currentSkeleton.strokeWidth,
+          clips: [{
+              ...currentClip,
+              keyframes: serializedKeyframes
+          }]
       });
   },
 
