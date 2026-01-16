@@ -20,7 +20,7 @@ export const EditorUI = () => {
   const handleLoad = () => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.json,.sap';
+      input.accept = '.json,.sap,application/json,text/plain,application/octet-stream';
       input.onchange = (e) => {
           const file = (e.target as HTMLInputElement).files?.[0];
           if (file) {
