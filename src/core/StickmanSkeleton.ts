@@ -3,13 +3,28 @@ import { StickmanNode } from './StickmanNode';
 
 export class StickmanSkeleton {
   root: StickmanNode;
+  headRadius: number;
+  strokeWidth: number;
 
-  constructor(root?: StickmanNode) {
+  constructor(root?: StickmanNode, headRadius: number = 0.2, strokeWidth: number = 0.1) {
     if (root) {
       this.root = root;
     } else {
       this.root = this.createDefaultSkeleton();
     }
+    this.headRadius = headRadius;
+    this.strokeWidth = strokeWidth;
+  }
+
+  // Getter for all nodes as a flat list
+  get nodes(): StickmanNode[] {
+    const nodes: StickmanNode[] = [];
+    const traverse = (node: StickmanNode) => {
+        nodes.push(node);
+        node.children.forEach(traverse);
+    };
+    traverse(this.root);
+    return nodes;
   }
 
   // Create a standard stickman skeleton
@@ -64,50 +79,36 @@ export class StickmanSkeleton {
   }
 
   clone(): StickmanSkeleton {
-    return new StickmanSkeleton(this.root.clone());
+    return new StickmanSkeleton(this.root.clone(), this.headRadius, this.strokeWidth);
   }
 
   // Linear interpolate between this skeleton and another
   lerp(target: StickmanSkeleton, alpha: number): StickmanSkeleton {
     const newSkeleton = this.clone();
+    // Lerp properties
+    newSkeleton.headRadius = this.headRadius + (target.headRadius - this.headRadius) * alpha;
+    newSkeleton.strokeWidth = this.strokeWidth + (target.strokeWidth - this.strokeWidth) * alpha;
+
     this._lerpNode(newSkeleton.root, target.root, alpha);
     return newSkeleton;
   }
 
   private _lerpNode(current: StickmanNode, target: StickmanNode, alpha: number) {
-    // If IDs match (should be the case for same skeleton structure), lerp position
-    // Assuming structure is identical for now
     if (current.id === target.id) {
        current.position.lerp(target.position, alpha);
     }
 
-    // Because we cloned the skeleton, the children order should be preserved
-    // But let's be safe and try to match children by ID if possible, or index
     for (let i = 0; i < current.children.length; i++) {
         const child = current.children[i];
-        // Find corresponding child in target
-        // Since we assume identical structure (cloned from same base), index usually works
-        // But let's use ID if we can ensure target has same IDs.
-        // Wait, if we are lerping between keyframes, keyframes store a snapshot of the skeleton.
-        // So the IDs should be consistent across keyframes if they are clones.
-
-        // However, target.children[i] might not be the same node if structure changed?
-        // For this task, we assume rigid skeleton structure across animation.
         if (i < target.children.length) {
             this._lerpNode(child, target.children[i], alpha);
         }
     }
   }
 
-  // Helper to get all nodes as a flat list
+  // Helper to get all nodes as a flat list (redundant with getter but kept for compatibility if needed)
   getAllNodes(): StickmanNode[] {
-      const nodes: StickmanNode[] = [];
-      const traverse = (node: StickmanNode) => {
-          nodes.push(node);
-          node.children.forEach(traverse);
-      };
-      traverse(this.root);
-      return nodes;
+      return this.nodes;
   }
 
   // Update a specific node position

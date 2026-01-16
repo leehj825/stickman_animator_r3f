@@ -93,7 +93,11 @@ export const useStickmanStore = create<StickmanState>((set, get) => ({
               // Reconstruct keysframes and skeletons
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const reconstructedKeyframes = loadedClip.keyframes.map((kf: any) => {
-                  const skeleton = new StickmanSkeleton();
+                  // Reconstruct with global properties if available in the clip or keyframe data?
+                  // The prompt implies properties might be top-level or on the skeleton.
+                  // For now, we use defaults or load if saved on skeleton.
+                  const skeleton = new StickmanSkeleton(undefined, kf.skeleton.headRadius, kf.skeleton.strokeWidth);
+
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const reconstructNode = (nodeData: any): StickmanNode => {
                       const pos = new Vector3(nodeData.position.x, nodeData.position.y, nodeData.position.z);
@@ -122,12 +126,18 @@ export const useStickmanStore = create<StickmanState>((set, get) => ({
                   keyframes: reconstructedKeyframes
               };
 
-              // Also update current skeleton to match the first frame or default
-              // For now, let's keep the current skeleton structure but maybe reset pose?
-              // Or just load the clip.
+              // Update current skeleton to match the first frame, ensuring properties are set
+              const firstFrameSkeleton = reconstructedKeyframes.length > 0 ? reconstructedKeyframes[0].skeleton : new StickmanSkeleton();
+              const newCurrentSkeleton = firstFrameSkeleton.clone();
+
+              // If global properties were in the JSON root (as implied by "{ clips: [], headRadius: 6.0 ... }")
+              // we should override them.
+              if (data.headRadius !== undefined) newCurrentSkeleton.headRadius = data.headRadius;
+              if (data.strokeWidth !== undefined) newCurrentSkeleton.strokeWidth = data.strokeWidth;
 
               set({
                   currentClip: newClip,
+                  currentSkeleton: newCurrentSkeleton,
                   currentTime: 0
               });
 
@@ -139,11 +149,12 @@ export const useStickmanStore = create<StickmanState>((set, get) => ({
   },
 
   saveProject: () => {
-      const { currentClip } = get();
+      const { currentClip, currentSkeleton } = get();
       // Serialization logic
       return JSON.stringify({
           clips: [currentClip],
-          // Add other global settings here
+          headRadius: currentSkeleton.headRadius,
+          strokeWidth: currentSkeleton.strokeWidth,
       });
   },
 
