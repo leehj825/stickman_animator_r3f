@@ -1,28 +1,22 @@
-import asyncio
-from playwright.async_api import async_playwright, expect
+from playwright.sync_api import sync_playwright
 
-async def run():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-
-        # Go to the local dev server
+def verify_stickman():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
         try:
-            await page.goto("http://localhost:5173")
+            page.goto("http://localhost:5173")
+            # Wait for canvas to be present
+            page.wait_for_selector("canvas", timeout=10000)
+            # Give it a moment to render
+            page.wait_for_timeout(2000)
 
-            # Wait for canvas to load
-            await page.wait_for_selector("canvas")
-
-            # Wait a bit for the 3D scene to render
-            await asyncio.sleep(2)
-
-            # Take a screenshot
-            await page.screenshot(path="verification/screenshot.png")
+            page.screenshot(path="verification/stickman_screenshot.png")
             print("Screenshot taken")
         except Exception as e:
             print(f"Error: {e}")
         finally:
-            await browser.close()
+            browser.close()
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    verify_stickman()

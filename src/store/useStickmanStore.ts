@@ -129,7 +129,8 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
             if (clipsData.length === 0) return;
 
             // SCALING FACTORS to fix "Too Large" and "Upside Down"
-            const SCALE = 0.1;
+            // Reduced to 0.05 to match new half-size default
+            const SCALE = 0.05;
             const INVERT_Y = -1;
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
