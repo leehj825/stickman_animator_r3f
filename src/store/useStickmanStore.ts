@@ -110,8 +110,12 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
 
       const newKeyframes = [...activeClip.keyframes, newKeyframe].sort((a, b) => a.timestamp - b.timestamp);
 
+      // Update duration if necessary
+      const maxTimestamp = newKeyframes.length > 0 ? newKeyframes[newKeyframes.length - 1].timestamp : 0;
+      const newDuration = Math.max(activeClip.duration, maxTimestamp);
+
       const updatedClips = clips.map(c =>
-          c.id === activeClipId ? { ...c, keyframes: newKeyframes } : c
+          c.id === activeClipId ? { ...c, keyframes: newKeyframes, duration: newDuration } : c
       );
 
       set({ clips: updatedClips });
@@ -150,12 +154,9 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
             };
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const reconstructedClips: StickmanClip[] = clipsData.map((clipData: any) => ({
-                id: clipData.id || uuidv4(),
-                name: clipData.name || "Imported Animation",
-                duration: clipData.duration || 5.0,
+            const reconstructedClips: StickmanClip[] = clipsData.map((clipData: any) => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                keyframes: (clipData.keyframes || []).map((kf: any) => {
+                const keyframes = (clipData.keyframes || []).map((kf: any) => {
                     const skelData = kf.pose || kf.skeleton;
                     const skeleton = new StickmanSkeleton(
                         undefined,
@@ -168,8 +169,26 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                         timestamp: kf.timestamp || (kf.frameIndex ? kf.frameIndex / 30.0 : 0),
                         skeleton: skeleton
                     };
-                })
-            }));
+                });
+
+                // Calculate exact duration from max timestamp if possible
+                let duration = clipData.duration || 5.0;
+                if (keyframes.length > 0) {
+                     const maxTime = Math.max(...keyframes.map((k: any) => k.timestamp));
+                     // If imported duration is default 5.0 but maxTime is smaller, strictly use maxTime?
+                     // Or if maxTime > duration, extend it.
+                     // User said "set exact animation length". So maxTime is the source of truth.
+                     // We add a tiny buffer or just strict maxTime. Strict maxTime allows looping perfectly.
+                     duration = maxTime > 0 ? maxTime : 5.0;
+                }
+
+                return {
+                    id: clipData.id || uuidv4(),
+                    name: clipData.name || "Imported Animation",
+                    duration: duration,
+                    keyframes: keyframes
+                };
+            });
 
             // Set State
             const firstClip = reconstructedClips[0];

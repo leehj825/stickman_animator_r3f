@@ -1,7 +1,7 @@
 import { useStickmanStore } from '../store/useStickmanStore';
-import { Play, Pause, Save, FolderOpen, Plus, MousePointer2, Film, Pencil, Check } from 'lucide-react';
+import { Play, Pause, Save, FolderOpen, Plus, MousePointer2, Film, Pencil, Check, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export const EditorUI = () => {
   const {
@@ -13,8 +13,20 @@ export const EditorUI = () => {
   } = useStickmanStore();
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [showClipDropdown, setShowClipDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const activeClip = clips.find(c => c.id === activeClipId) || clips[0];
+
+  useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+          if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+              setShowClipDropdown(false);
+          }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSave = () => {
       const json = saveProject();
@@ -46,87 +58,108 @@ export const EditorUI = () => {
   return (
     <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex flex-col justify-between p-4">
 
-      {/* Top Bar */}
-      <div className="pointer-events-auto flex items-center space-x-2 bg-black/50 p-2 rounded-lg backdrop-blur-sm text-white self-start">
-        <button
-            className={clsx("p-2 rounded hover:bg-white/20", editMode && "bg-blue-600")}
-            onClick={() => setEditMode(!editMode)}
-            title="Edit Mode"
-        >
-            <MousePointer2 size={20} />
-        </button>
-        <div className="h-6 w-px bg-white/20 mx-2"></div>
-        <button className="p-2 rounded hover:bg-white/20" onClick={handleSave} title="Save">
-            <Save size={20} />
-        </button>
-        <button className="p-2 rounded hover:bg-white/20" onClick={handleLoad} title="Load">
-            <FolderOpen size={20} />
-        </button>
-      </div>
+      {/* Top Bar Container */}
+      <div className="pointer-events-auto flex flex-wrap items-start gap-4 self-start w-full">
 
-      {/* Right Sidebar: Animations List */}
-      <div className="absolute top-16 right-4 w-56 bg-black/80 rounded-lg backdrop-blur-md text-white pointer-events-auto flex flex-col max-h-[40%]">
-         <div className="p-3 border-b border-white/10 font-semibold flex items-center gap-2 text-xs uppercase tracking-wider">
-            <Film size={14} /> Animations
-         </div>
-         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {clips.map(clip => (
-                <div
-                    key={clip.id}
-                    className={clsx(
-                        "p-2 rounded cursor-pointer text-sm flex items-center justify-between group",
-                        clip.id === activeClipId ? "bg-blue-600" : "hover:bg-white/10"
-                    )}
-                    onClick={() => setActiveClip(clip.id)}
-                >
-                    {renamingId === clip.id ? (
-                        <div className="flex items-center gap-1 w-full">
-                            <input
-                                className="bg-black/40 border border-white/20 rounded px-1 py-0.5 w-full text-xs"
-                                value={clip.name}
-                                autoFocus
-                                onChange={(e) => updateClipName(clip.id, e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') setRenamingId(null);
-                                }}
-                            />
-                            <button
-                                className="p-1 hover:bg-white/20 rounded"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setRenamingId(null);
-                                }}
-                            >
-                                <Check size={12} />
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                            <span className="truncate flex-1">{clip.name}</span>
-                            <button
-                                className={clsx("p-1 hover:bg-white/20 rounded opacity-0 group-hover:opacity-100 transition-opacity", clip.id === activeClipId && "opacity-100")}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setRenamingId(clip.id);
-                                }}
-                                title="Rename"
-                            >
-                                <Pencil size={12} />
-                            </button>
-                        </>
-                    )}
+        {/* Main Controls */}
+        <div className="flex items-center space-x-2 bg-black/50 p-2 rounded-lg backdrop-blur-sm text-white">
+            <button
+                className={clsx("p-2 rounded hover:bg-white/20", editMode && "bg-blue-600")}
+                onClick={() => setEditMode(!editMode)}
+                title="Edit Mode"
+            >
+                <MousePointer2 size={20} />
+            </button>
+            <div className="h-6 w-px bg-white/20 mx-2"></div>
+            <button className="p-2 rounded hover:bg-white/20" onClick={handleSave} title="Save">
+                <Save size={20} />
+            </button>
+            <button className="p-2 rounded hover:bg-white/20" onClick={handleLoad} title="Load">
+                <FolderOpen size={20} />
+            </button>
+        </div>
+
+        {/* Animation Selector (Compact Dropdown) */}
+        <div className="relative" ref={dropdownRef}>
+            <div
+                className="flex items-center bg-black/50 hover:bg-black/70 rounded-lg backdrop-blur-sm text-white cursor-pointer select-none"
+                onClick={() => setShowClipDropdown(!showClipDropdown)}
+            >
+                <div className="p-3 flex items-center gap-2 min-w-[160px]">
+                    <Film size={16} />
+                    <span className="font-semibold truncate max-w-[150px]">{activeClip.name}</span>
                 </div>
-            ))}
-         </div>
-         <div className="p-2 border-t border-white/10">
-             <button
-                onClick={addClip}
-                className="w-full py-2 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 rounded text-xs uppercase font-bold transition-colors"
-             >
-                 <Plus size={12} /> New
-             </button>
-         </div>
+                <div className="p-3 border-l border-white/10">
+                    <ChevronDown size={16} />
+                </div>
+            </div>
+
+            {/* Dropdown Menu */}
+            {showClipDropdown && (
+                <div className="absolute top-full right-0 mt-2 w-64 bg-black/90 rounded-lg shadow-xl backdrop-blur-md text-white border border-white/10 z-50">
+                    <div className="max-h-[300px] overflow-y-auto p-1 space-y-1">
+                        {clips.map(clip => (
+                            <div
+                                key={clip.id}
+                                className={clsx(
+                                    "p-2 rounded cursor-pointer text-sm flex items-center justify-between group",
+                                    clip.id === activeClipId ? "bg-blue-600" : "hover:bg-white/10"
+                                )}
+                                onClick={() => {
+                                    setActiveClip(clip.id);
+                                    setShowClipDropdown(false);
+                                }}
+                            >
+                                {renamingId === clip.id ? (
+                                    <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
+                                        <input
+                                            className="bg-black/40 border border-white/20 rounded px-1 py-0.5 w-full text-xs"
+                                            value={clip.name}
+                                            autoFocus
+                                            onChange={(e) => updateClipName(clip.id, e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') setRenamingId(null);
+                                            }}
+                                        />
+                                        <button
+                                            className="p-1 hover:bg-white/20 rounded"
+                                            onClick={() => setRenamingId(null)}
+                                        >
+                                            <Check size={12} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <span className="truncate flex-1">{clip.name}</span>
+                                        <button
+                                            className="p-1 hover:bg-white/20 rounded opacity-50 hover:opacity-100"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setRenamingId(clip.id);
+                                            }}
+                                            title="Rename"
+                                        >
+                                            <Pencil size={12} />
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-2 border-t border-white/10">
+                         <button
+                            onClick={() => {
+                                addClip();
+                                setShowClipDropdown(false);
+                            }}
+                            className="w-full py-2 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 rounded text-xs uppercase font-bold transition-colors"
+                         >
+                             <Plus size={12} /> New Animation
+                         </button>
+                    </div>
+                </div>
+            )}
+        </div>
       </div>
 
       {/* Bottom Bar: Timeline */}
