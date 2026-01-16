@@ -1,6 +1,7 @@
 import { useStickmanStore } from '../store/useStickmanStore';
-import { Play, Pause, Save, FolderOpen, Plus, MousePointer2, Film } from 'lucide-react';
+import { Play, Pause, Save, FolderOpen, Plus, MousePointer2, Film, Pencil, Check } from 'lucide-react';
 import clsx from 'clsx';
+import { useState } from 'react';
 
 export const EditorUI = () => {
   const {
@@ -10,6 +11,8 @@ export const EditorUI = () => {
       clips, activeClipId, setActiveClip, addClip, updateClipName,
       saveProject, loadProject
   } = useStickmanStore();
+
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   const activeClip = clips.find(c => c.id === activeClipId) || clips[0];
 
@@ -62,35 +65,66 @@ export const EditorUI = () => {
       </div>
 
       {/* Right Sidebar: Animations List */}
-      <div className="absolute top-4 right-4 w-64 bg-black/80 rounded-lg backdrop-blur-md text-white pointer-events-auto flex flex-col max-h-[50%]">
-         <div className="p-3 border-b border-white/10 font-semibold flex items-center gap-2">
-            <Film size={16} /> Animations
+      <div className="absolute top-16 right-4 w-56 bg-black/80 rounded-lg backdrop-blur-md text-white pointer-events-auto flex flex-col max-h-[40%]">
+         <div className="p-3 border-b border-white/10 font-semibold flex items-center gap-2 text-xs uppercase tracking-wider">
+            <Film size={14} /> Animations
          </div>
          <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {clips.map(clip => (
                 <div
                     key={clip.id}
                     className={clsx(
-                        "p-2 rounded cursor-pointer text-sm flex items-center group",
+                        "p-2 rounded cursor-pointer text-sm flex items-center justify-between group",
                         clip.id === activeClipId ? "bg-blue-600" : "hover:bg-white/10"
                     )}
                     onClick={() => setActiveClip(clip.id)}
                 >
-                    <input
-                        className="bg-transparent border-none outline-none w-full cursor-pointer"
-                        value={clip.name}
-                        onChange={(e) => updateClipName(clip.id, e.target.value)}
-                        onClick={(e) => e.stopPropagation()} // Allow typing without re-triggering select
-                    />
+                    {renamingId === clip.id ? (
+                        <div className="flex items-center gap-1 w-full">
+                            <input
+                                className="bg-black/40 border border-white/20 rounded px-1 py-0.5 w-full text-xs"
+                                value={clip.name}
+                                autoFocus
+                                onChange={(e) => updateClipName(clip.id, e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') setRenamingId(null);
+                                }}
+                            />
+                            <button
+                                className="p-1 hover:bg-white/20 rounded"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRenamingId(null);
+                                }}
+                            >
+                                <Check size={12} />
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            <span className="truncate flex-1">{clip.name}</span>
+                            <button
+                                className={clsx("p-1 hover:bg-white/20 rounded opacity-0 group-hover:opacity-100 transition-opacity", clip.id === activeClipId && "opacity-100")}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRenamingId(clip.id);
+                                }}
+                                title="Rename"
+                            >
+                                <Pencil size={12} />
+                            </button>
+                        </>
+                    )}
                 </div>
             ))}
          </div>
          <div className="p-2 border-t border-white/10">
              <button
                 onClick={addClip}
-                className="w-full py-2 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 rounded text-sm transition-colors"
+                className="w-full py-2 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 rounded text-xs uppercase font-bold transition-colors"
              >
-                 <Plus size={14} /> New Animation
+                 <Plus size={12} /> New
              </button>
          </div>
       </div>
