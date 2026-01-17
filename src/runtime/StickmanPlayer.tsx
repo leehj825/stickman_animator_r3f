@@ -8,8 +8,7 @@ import { ParsedStickmanProject } from './parser';
 // --- Pure Visual Components (No Store Dependencies) ---
 
 const JointNode = ({ node, radius }: { node: StickmanNode, radius: number }) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const meshRef = useRef<any>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
 
   useFrame(() => {
     if (meshRef.current) {
@@ -29,8 +28,7 @@ const JointNode = ({ node, radius }: { node: StickmanNode, radius: number }) => 
 };
 
 const BoneSegment = ({ startNode, endNode, thickness }: { startNode: StickmanNode, endNode: StickmanNode, thickness: number }) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const meshRef = useRef<any>(null);
+    const meshRef = useRef<THREE.Mesh>(null);
     const axis = useMemo(() => new Vector3(0, 1, 0), []);
     const startVec = useMemo(() => new Vector3(), []);
     const endVec = useMemo(() => new Vector3(), []);
