@@ -119,18 +119,29 @@ const CameraController = () => {
         const dist = viewZoom; // Use zoom as distance
         const height = viewHeight;
 
+        // Helper to update controls target without resetting camera position
+        const updateTarget = () => {
+            if (controlsRef.current) {
+                controlsRef.current.target.set(0, height, 0);
+                controlsRef.current.update();
+            }
+        };
+
         if (cameraView === 'front') {
             camera.position.set(0, height, dist);
             camera.lookAt(0, height, 0);
-            if(controlsRef.current) controlsRef.current.reset(); // Reset orbit
+            updateTarget();
         } else if (cameraView === 'side') {
             camera.position.set(dist, height, 0);
             camera.lookAt(0, height, 0);
-             if(controlsRef.current) controlsRef.current.reset();
+            updateTarget();
         } else if (cameraView === 'top') {
+            // For top view, we usually want +Y.
+            // Note: OrbitControls might have issues looking straight down if not handled,
+            // but usually it's fine.
             camera.position.set(0, dist + height, 0);
             camera.lookAt(0, height, 0);
-             if(controlsRef.current) controlsRef.current.reset();
+            updateTarget();
         }
 
         // For 'free', we leave it to OrbitControls user interaction
