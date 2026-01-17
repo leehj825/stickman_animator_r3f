@@ -1,15 +1,58 @@
-import { useStickmanStore } from '../store/useStickmanStore';
-import { Play, Pause, FolderOpen, Plus, MousePointer2, Film, Pencil, Check, ChevronDown, Share2 } from 'lucide-react';
+import { useStickmanStore, CameraView, AxisMode } from '../store/useStickmanStore';
+import { Play, Pause, Plus, MousePointer2, Film, Check, ChevronDown, Share2, FolderOpen, Save } from 'lucide-react';
 import clsx from 'clsx';
 import { useState, useRef, useEffect } from 'react';
+
+// Vertical Slider Component
+const VerticalSlider = ({ value, min, max, onChange, label }: { value: number, min: number, max: number, onChange: (v: number) => void, label: string }) => {
+    return (
+        <div className="flex flex-col items-center h-[120px] mb-2">
+            <span className="text-[10px] text-white/70 mb-1">{label}</span>
+            <div className="h-full w-4 relative flex justify-center">
+                <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={0.01}
+                    value={value}
+                    onChange={(e) => onChange(parseFloat(e.target.value))}
+                    className="absolute w-[100px] h-4 origin-center -rotate-90 top-[40px] appearance-none bg-white/20 rounded-full outline-none cursor-pointer"
+                    style={{
+                         // Custom style for track if needed, handled by Tailwind bg-white/20
+                    }}
+                />
+            </div>
+        </div>
+    );
+};
+
+// Mini Button for View/Axis
+const MiniBtn = ({ label, active, color, onClick }: { label: string, active: boolean, color: string, onClick: () => void }) => (
+    <button
+        onClick={onClick}
+        className={clsx(
+            "w-7 h-7 flex items-center justify-center rounded border border-white/20 text-xs font-bold transition-all mb-1",
+            active ? "text-white" : "text-white/70 hover:bg-white/10"
+        )}
+        style={{ backgroundColor: active ? color : 'transparent' }}
+    >
+        {label}
+    </button>
+);
 
 export const EditorUI = () => {
   const {
       isPlaying, togglePlay,
-      editMode, setEditMode,
+      modeType, setModeType,
       addKeyframe, currentTime,
       clips, activeClipId, setActiveClip, addClip, updateClipName,
-      saveProject, loadProject
+      saveProject, loadProject,
+      currentSkeleton,
+      cameraView, setCameraView,
+      axisMode, setAxisMode,
+      viewZoom, setViewZoom,
+      viewHeight, setViewHeight,
+      setHeadRadius, setStrokeWidth
   } = useStickmanStore();
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -29,54 +72,36 @@ export const EditorUI = () => {
   }, []);
 
   const handleSave = async () => {
-      try {
-          const json = saveProject('sa3');
-          // Use Blob first - safest for download fallback and file creation
-          const blob = new Blob([json], { type: 'application/json' });
-          const fileName = `stickman_project_${Date.now()}.sa3`;
+      const json = saveProject('sa3');
+      const fileName = `stickman_project_${Date.now()}.sa3`;
+      const file = new File([json], fileName, { type: 'application/json' });
 
-          let shared = false;
-
-          // Attempt Share if API exists
-          if (navigator.share && navigator.canShare) {
-             try {
-                 // Construct File for sharing
-                 const file = new File([blob], fileName, { type: 'application/json' });
-                 if (navigator.canShare({ files: [file] })) {
-                     await navigator.share({
-                         files: [file],
-                         title: 'Stickman Project',
-                         text: 'Here is my stickman animation project.',
-                     });
-                     shared = true;
-                 }
-             } catch (err) {
-                 console.warn("Share failed/cancelled:", err);
-                 // Proceed to fallback download
-             }
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+              await navigator.share({
+                  title: 'Stickman Project',
+                  text: 'Here is my stickman animation project.',
+                  files: [file],
+              });
+              return;
+          } catch (error) {
+              console.warn("Share failed", error);
           }
-
-          if (!shared) {
-              // Fallback: Direct Download
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = fileName;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              URL.revokeObjectURL(url);
-          }
-      } catch (e) {
-          console.error("Save failed:", e);
-          alert("Save failed: " + e);
       }
+
+      const url = URL.createObjectURL(file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
   };
 
   const handleLoad = () => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.json,.sap,.sa3,application/json,text/plain,application/octet-stream';
+      input.accept = '.json,.sap,.sa3,application/json';
       input.onchange = (e) => {
           const file = (e.target as HTMLInputElement).files?.[0];
           if (file) {
@@ -89,142 +114,157 @@ export const EditorUI = () => {
   };
 
   return (
-    <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex flex-col justify-between p-4">
+    <div className="absolute top-0 left-0 w-full h-full pointer-events-none flex flex-col justify-between">
 
-      {/* Top Bar Container */}
-      <div className="pointer-events-auto flex flex-wrap items-start gap-4 self-start w-full">
-
-        {/* Main Controls */}
-        <div className="flex items-center space-x-2 bg-black/50 p-2 rounded-lg backdrop-blur-sm text-white">
-            <button
-                className={clsx("p-2 rounded hover:bg-white/20", editMode && "bg-blue-600")}
-                onClick={() => setEditMode(!editMode)}
-                title="Edit Mode"
-            >
-                <MousePointer2 size={20} />
-            </button>
-            <div className="h-6 w-px bg-white/20 mx-2"></div>
-            <button className="p-2 rounded hover:bg-white/20" onClick={handleSave} title="Save / Share">
-                <Share2 size={20} />
-            </button>
-            <button className="p-2 rounded hover:bg-white/20" onClick={handleLoad} title="Load">
-                <FolderOpen size={20} />
-            </button>
-        </div>
-
-        {/* Animation Selector */}
-        <div className="relative" ref={dropdownRef}>
-            <div
-                className="flex items-center bg-black/50 hover:bg-black/70 rounded-lg backdrop-blur-sm text-white cursor-pointer select-none"
-                onClick={() => setShowClipDropdown(!showClipDropdown)}
-            >
-                <div className="p-3 flex items-center gap-2 min-w-[160px]">
-                    <Film size={16} />
-                    <span className="font-semibold truncate max-w-[150px]">{activeClip.name}</span>
-                </div>
-                <div className="p-3 border-l border-white/10">
-                    <ChevronDown size={16} />
-                </div>
-            </div>
-
-            {/* Dropdown Menu */}
-            {showClipDropdown && (
-                <div className="absolute top-full right-0 mt-2 w-64 bg-black/90 rounded-lg shadow-xl backdrop-blur-md text-white border border-white/10 z-50">
-                    <div className="max-h-[300px] overflow-y-auto p-1 space-y-1">
-                        {clips.map(clip => (
-                            <div
-                                key={clip.id}
-                                className={clsx(
-                                    "p-2 rounded cursor-pointer text-sm flex items-center justify-between group",
-                                    clip.id === activeClipId ? "bg-blue-600" : "hover:bg-white/10"
-                                )}
-                                onClick={() => {
-                                    setActiveClip(clip.id);
-                                    setShowClipDropdown(false);
-                                }}
-                            >
-                                {renamingId === clip.id ? (
-                                    <div className="flex items-center gap-1 w-full" onClick={(e) => e.stopPropagation()}>
-                                        <input
-                                            className="bg-black/40 border border-white/20 rounded px-1 py-0.5 w-full text-xs"
-                                            value={clip.name}
-                                            autoFocus
-                                            onChange={(e) => updateClipName(clip.id, e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') setRenamingId(null);
-                                            }}
-                                        />
-                                        <button
-                                            className="p-1 hover:bg-white/20 rounded"
-                                            onClick={() => setRenamingId(null)}
-                                        >
-                                            <Check size={12} />
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <span className="truncate flex-1">{clip.name}</span>
-                                        <button
-                                            className="p-1 hover:bg-white/20 rounded opacity-50 hover:opacity-100"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setRenamingId(clip.id);
-                                            }}
-                                            title="Rename"
-                                        >
-                                            <Pencil size={12} />
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                    <div className="p-2 border-t border-white/10">
-                         <button
-                            onClick={() => {
-                                addClip();
-                                setShowClipDropdown(false);
-                            }}
-                            className="w-full py-2 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 rounded text-xs uppercase font-bold transition-colors"
-                         >
-                             <Plus size={12} /> New Animation
-                         </button>
-                    </div>
-                </div>
-            )}
-        </div>
+      {/* Top Mode Switcher */}
+      <div className="pointer-events-auto absolute top-2 left-0 right-0 flex justify-center">
+          <div className="flex bg-black/60 backdrop-blur-md rounded-full px-1 py-1">
+              <button
+                  onClick={() => setModeType('pose')}
+                  className={clsx("px-4 py-1 rounded-full text-sm font-bold transition-all", modeType === 'pose' ? "bg-cyan-600 text-white" : "text-white/60 hover:text-white")}
+              >
+                  Pose
+              </button>
+              <div className="w-px bg-white/20 mx-1 my-2"></div>
+              <button
+                  onClick={() => setModeType('animate')}
+                  className={clsx("px-4 py-1 rounded-full text-sm font-bold transition-all", modeType === 'animate' ? "bg-purple-600 text-white" : "text-white/60 hover:text-white")}
+              >
+                  Animate
+              </button>
+          </div>
       </div>
 
-      {/* Bottom Bar: Timeline */}
-      <div className="pointer-events-auto bg-black/50 p-4 rounded-lg backdrop-blur-sm text-white flex flex-col space-y-2 mt-auto">
-        <div className="flex items-center space-x-4">
-            <button className="p-2 rounded bg-blue-600 hover:bg-blue-700" onClick={togglePlay}>
-                {isPlaying ? <Pause size={20} /> : <Play size={20} />}
-            </button>
-            <div className="text-sm font-mono min-w-[100px]">
-                {currentTime.toFixed(2)}s / {activeClip.duration.toFixed(2)}s
+      {/* Left Panel: Camera Controls */}
+      <div className="pointer-events-auto absolute top-14 left-2 flex flex-col gap-2 w-12">
+          {/* Views */}
+          <div className="bg-black/60 backdrop-blur-md rounded-lg p-1 flex flex-col items-center">
+              <MiniBtn label="F" active={cameraView === 'free'} color="#3b82f6" onClick={() => setCameraView('free')} />
+              <MiniBtn label="X" active={cameraView === 'side'} color="#ef4444" onClick={() => setCameraView('side')} />
+              <MiniBtn label="Y" active={cameraView === 'top'} color="#22c55e" onClick={() => setCameraView('top')} />
+              <MiniBtn label="Z" active={cameraView === 'front'} color="#3b82f6" onClick={() => setCameraView('front')} />
+          </div>
+
+          {/* Sliders */}
+          <div className="bg-black/60 backdrop-blur-md rounded-lg p-1 flex flex-col items-center">
+              <VerticalSlider label="Hgt" value={viewHeight} min={-5} max={10} onChange={setViewHeight} />
+              <VerticalSlider label="Zm" value={viewZoom} min={1} max={20} onChange={setViewZoom} />
+          </div>
+      </div>
+
+      {/* Right Panel: Axis & Style Controls */}
+      <div className="pointer-events-auto absolute top-14 right-2 flex flex-col gap-2 w-12">
+          {/* Axis */}
+          <div className="bg-black/60 backdrop-blur-md rounded-lg p-1 flex flex-col items-center">
+              <MiniBtn label="F" active={axisMode === 'none'} color="#f59e0b" onClick={() => setAxisMode('none')} />
+              <MiniBtn label="X" active={axisMode === 'x'} color="#ef4444" onClick={() => setAxisMode('x')} />
+              <MiniBtn label="Y" active={axisMode === 'y'} color="#22c55e" onClick={() => setAxisMode('y')} />
+              <MiniBtn label="Z" active={axisMode === 'z'} color="#3b82f6" onClick={() => setAxisMode('z')} />
+          </div>
+
+          {/* Style Sliders */}
+          <div className="bg-black/60 backdrop-blur-md rounded-lg p-1 flex flex-col items-center">
+              <VerticalSlider label="Head" value={currentSkeleton.headRadius} min={0.1} max={1.0} onChange={setHeadRadius} />
+              <VerticalSlider label="Line" value={currentSkeleton.strokeWidth} min={0.01} max={0.3} onChange={setStrokeWidth} />
+          </div>
+      </div>
+
+      {/* Bottom Bar: Timeline & Tools */}
+      <div className="pointer-events-auto mt-auto m-2 bg-black/60 backdrop-blur-md rounded-xl p-3 text-white">
+
+        {/* Playback & Keyframes (Animate Mode) */}
+        {modeType === 'animate' && (
+            <div className="flex flex-col gap-2 mb-2 border-b border-white/10 pb-2">
+                {/* Clips Selector */}
+                <div className="relative" ref={dropdownRef}>
+                    <div
+                        className="flex items-center gap-2 cursor-pointer hover:bg-white/10 p-1 rounded"
+                        onClick={() => setShowClipDropdown(!showClipDropdown)}
+                    >
+                         <Film size={14} className="text-purple-400"/>
+                         <span className="text-xs font-bold uppercase">{activeClip.name}</span>
+                         <ChevronDown size={12} />
+                    </div>
+                     {/* Dropdown Menu */}
+                    {showClipDropdown && (
+                        <div className="absolute bottom-full left-0 mb-2 w-48 bg-black/90 rounded-lg shadow-xl border border-white/10 p-1 max-h-[200px] overflow-y-auto">
+                            {clips.map(clip => (
+                                <div key={clip.id}
+                                    className={clsx("p-2 text-xs rounded hover:bg-white/20 cursor-pointer", clip.id === activeClipId && "bg-purple-600")}
+                                    onClick={() => { setActiveClip(clip.id); setShowClipDropdown(false); }}
+                                >
+                                    {clip.name}
+                                </div>
+                            ))}
+                            <div className="border-t border-white/10 mt-1 pt-1">
+                                <button onClick={addClip} className="w-full text-left p-2 text-xs hover:bg-white/20 text-green-400 flex items-center gap-1">
+                                    <Plus size={12}/> New Animation
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Timeline Controls */}
+                <div className="flex items-center gap-3">
+                    <button onClick={togglePlay} className="hover:text-purple-400">
+                        {isPlaying ? <Pause size={24} /> : <Play size={24} />}
+                    </button>
+
+                    <div className="flex-1 flex flex-col justify-center h-8 relative bg-black/30 rounded px-2">
+                         {/* Progress Bar */}
+                         <div className="absolute top-0 bottom-0 left-0 bg-white/5 w-full pointer-events-none"/>
+                         <div
+                            className="absolute top-0 bottom-0 left-0 bg-purple-600/30 transition-all duration-75"
+                            style={{ width: `${(currentTime / activeClip.duration) * 100}%` }}
+                         />
+
+                         {/* Keyframes Dots */}
+                         {activeClip.keyframes.map(kf => (
+                             <div
+                                key={kf.id}
+                                className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-yellow-400 rounded-full shadow-sm"
+                                style={{ left: `${(kf.timestamp / activeClip.duration) * 100}%` }}
+                             />
+                         ))}
+
+                         {/* Playhead */}
+                         <div
+                             className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 transition-all duration-75"
+                             style={{ left: `${(currentTime / activeClip.duration) * 100}%` }}
+                         />
+                    </div>
+
+                    <div className="text-xs font-mono w-16 text-right">
+                        {currentTime.toFixed(2)}s
+                    </div>
+                </div>
+
+                 <div className="flex justify-between items-center">
+                    <button
+                        onClick={addKeyframe}
+                        className="bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-xs font-bold flex items-center gap-1"
+                    >
+                        <Plus size={12}/> Keyframe
+                    </button>
+                 </div>
             </div>
-            <button className="p-2 rounded bg-green-600 hover:bg-green-700 flex items-center space-x-1" onClick={addKeyframe}>
-                <Plus size={16} />
-                <span>Keyframe</span>
-            </button>
+        )}
+
+        {/* Toolbar (Common) */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+             <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={handleSave}>
+                 <Share2 size={12}/> Save / Share
+             </button>
+             <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={handleLoad}>
+                 <FolderOpen size={12}/> Load
+             </button>
+             {/* OBJ Export Placeholder */}
+             <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs text-white/50 cursor-not-allowed">
+                 OBJ
+             </button>
         </div>
 
-        {/* Timeline Visualizer */}
-        <div className="w-full h-8 bg-black/30 rounded relative mt-2 overflow-hidden">
-            <div
-                className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 transition-all duration-75"
-                style={{ left: `${(currentTime / activeClip.duration) * 100}%` }}
-            />
-            {activeClip.keyframes.map((kf) => (
-                <div
-                    key={kf.id}
-                    className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-yellow-400 rounded-full hover:scale-150 transition-transform cursor-pointer"
-                    style={{ left: `${(kf.timestamp / activeClip.duration) * 100}%` }}
-                    title={`Keyframe at ${kf.timestamp.toFixed(2)}s`}
-                />
-            ))}
-        </div>
       </div>
     </div>
   );

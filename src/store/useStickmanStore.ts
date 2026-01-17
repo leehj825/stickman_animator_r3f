@@ -5,26 +5,44 @@ import { StickmanNode } from '../core/StickmanNode';
 import { v4 as uuidv4 } from 'uuid';
 import { Vector3 } from 'three';
 
+export type CameraView = 'front' | 'side' | 'top' | 'free';
+export type AxisMode = 'none' | 'x' | 'y' | 'z';
+
 interface StickmanState {
   currentSkeleton: StickmanSkeleton;
   clips: StickmanClip[];
   activeClipId: string;
   isPlaying: boolean;
   currentTime: number;
-  editMode: boolean;
+  editMode: boolean; // True = Animate/Pose mode logic
+  modeType: 'pose' | 'animate'; // Distinct mode selector
   selectedNodeId: string | null;
   skin: any;
   polygons: any;
 
+  // View State
+  cameraView: CameraView;
+  axisMode: AxisMode;
+  viewZoom: number;   // Acts as Distance multiplier
+  viewHeight: number; // Y-offset for camera target
+
   // Actions
   togglePlay: () => void;
-  setEditMode: (enabled: boolean) => void;
+  setModeType: (mode: 'pose' | 'animate') => void;
   selectNode: (id: string | null) => void;
   updateNodePosition: (id: string, position: Vector3) => void;
   addKeyframe: () => void;
   loadProject: (json: string) => void;
   saveProject: (format?: 'sap' | 'sa3') => string;
   setCurrentTime: (time: number) => void;
+
+  // UI Actions
+  setCameraView: (view: CameraView) => void;
+  setAxisMode: (mode: AxisMode) => void;
+  setViewZoom: (zoom: number) => void;
+  setViewHeight: (height: number) => void;
+  setHeadRadius: (radius: number) => void;
+  setStrokeWidth: (width: number) => void;
 
   // Playlist Actions
   setActiveClip: (id: string) => void;
@@ -49,15 +67,42 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     isPlaying: false,
     currentTime: 0,
     editMode: true,
+    modeType: 'pose',
     selectedNodeId: null,
     skin: null,
     polygons: null,
 
+    // Default View State
+    cameraView: 'free',
+    axisMode: 'none',
+    viewZoom: 5.0, // Default distance
+    viewHeight: 2.0, // Default height
+
     togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
 
-    setEditMode: (enabled) => set({ editMode: enabled }),
+    setModeType: (mode) => set({ modeType: mode, editMode: true }), // Always edit enabled for now
 
     selectNode: (id) => set({ selectedNodeId: id }),
+
+    setCameraView: (view) => set({ cameraView: view }),
+    setAxisMode: (mode) => set({ axisMode: mode }),
+    setViewZoom: (zoom) => set({ viewZoom: zoom }),
+    setViewHeight: (height) => set({ viewHeight: height }),
+
+    setHeadRadius: (radius) => {
+        const { currentSkeleton } = get();
+        // Clone to ensure re-render if using strict equality checks in selectors
+        const newSkeleton = currentSkeleton.clone();
+        newSkeleton.headRadius = radius;
+        set({ currentSkeleton: newSkeleton });
+    },
+
+    setStrokeWidth: (width) => {
+        const { currentSkeleton } = get();
+        const newSkeleton = currentSkeleton.clone();
+        newSkeleton.strokeWidth = width;
+        set({ currentSkeleton: newSkeleton });
+    },
 
     setActiveClip: (id) => {
         const { clips } = get();
@@ -126,7 +171,6 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
             const data = JSON.parse(json);
             const isSa3 = data.format === 'sa3' || !!data.skin || !!data.polygons;
 
-            // SCALE FIX: 0.05 for SAP files to match new default size
             const SCALE = isSa3 ? 1.0 : 0.05;
             const INVERT_Y = isSa3 ? 1.0 : -1.0;
 
@@ -162,7 +206,6 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const keyframes = (clipData.keyframes || []).map((kf: any) => {
                     const skelData = kf.pose || kf.skeleton;
-                    // Apply Scaling to Thickness/Radius too
                     const baseHead = (skelData.headRadius || data.headRadius || 6.0);
                     const baseStroke = (skelData.strokeWidth || data.strokeWidth || 4.6);
 
@@ -193,16 +236,13 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 };
             });
 
-            // --- Floor Alignment Logic ---
             if (!isSa3 && reconstructedClips.length > 0) {
                 let minY = Infinity;
-
                 const firstClip = reconstructedClips[0];
                 const firstSkeleton = firstClip.keyframes.length > 0
                     ? firstClip.keyframes[0].skeleton
                     : new StickmanSkeleton();
 
-                // Find global min Y in the first frame
                 const traverseAndFindMin = (node: StickmanNode) => {
                     if (node.position.y < minY) minY = node.position.y;
                     node.children.forEach(traverseAndFindMin);
@@ -213,7 +253,6 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 }
 
                 if (minY !== Infinity) {
-                    // Move the lowest point to y=0
                     const offsetY = -minY;
                     reconstructedClips.forEach(clip => {
                         clip.keyframes.forEach(kf => {
@@ -224,7 +263,6 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                             applyOffset(kf.skeleton.root);
                         });
                     });
-                    console.log(`SAP Import: Aligned floor by moving up ${offsetY.toFixed(4)} units.`);
                 }
             }
 
