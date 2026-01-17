@@ -2,7 +2,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, TransformControls, Sphere } from '@react-three/drei';
 import { useStickmanStore } from '../store/useStickmanStore';
 import { StickmanNode } from '../core/StickmanNode';
-import { Object3D, Vector3, Quaternion, Euler } from 'three';
+import { Object3D, Vector3, Quaternion } from 'three';
 import { useRef, useMemo, useEffect } from 'react';
 
 // --- Joint & Bone Components (Same as before but with Axis awareness) ---
@@ -109,8 +109,9 @@ const StickmanRecursive = ({ node, headRadius, strokeWidth }: { node: StickmanNo
 
 // --- Camera Controller ---
 const CameraController = () => {
-    const { camera, gl } = useThree();
+    const { camera } = useThree();
     const { cameraView, viewZoom, viewHeight } = useStickmanStore();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const controlsRef = useRef<any>(null);
 
     useEffect(() => {
@@ -174,7 +175,6 @@ const SkinPlaceholder = () => {
 
 const SceneContent = () => {
     const currentSkeleton = useStickmanStore((state) => state.currentSkeleton);
-    const selectNode = useStickmanStore((state) => state.selectNode);
     const { isPlaying, clips, activeClipId, currentTime, setCurrentTime } = useStickmanStore();
 
     // Playback Logic
