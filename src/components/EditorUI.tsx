@@ -1,5 +1,5 @@
-import { useStickmanStore, CameraView, AxisMode } from '../store/useStickmanStore';
-import { Play, Pause, Plus, MousePointer2, Film, Check, ChevronDown, Share2, FolderOpen, Save } from 'lucide-react';
+import { useStickmanStore } from '../store/useStickmanStore';
+import { Play, Pause, Plus, Film, ChevronDown, Share2, FolderOpen } from 'lucide-react';
 import clsx from 'clsx';
 import { useState, useRef, useEffect } from 'react';
 
@@ -18,7 +18,7 @@ const VerticalSlider = ({ value, min, max, onChange, label }: { value: number, m
                     onChange={(e) => onChange(parseFloat(e.target.value))}
                     className="absolute w-[100px] h-4 origin-center -rotate-90 top-[40px] appearance-none bg-white/20 rounded-full outline-none cursor-pointer"
                     style={{
-                         // Custom style for track if needed, handled by Tailwind bg-white/20
+                         // Custom style for track if needed
                     }}
                 />
             </div>
@@ -45,7 +45,7 @@ export const EditorUI = () => {
       isPlaying, togglePlay,
       modeType, setModeType,
       addKeyframe, currentTime,
-      clips, activeClipId, setActiveClip, addClip, updateClipName,
+      clips, activeClipId, setActiveClip, addClip,
       saveProject, loadProject,
       currentSkeleton,
       cameraView, setCameraView,
@@ -55,7 +55,6 @@ export const EditorUI = () => {
       setHeadRadius, setStrokeWidth
   } = useStickmanStore();
 
-  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [showClipDropdown, setShowClipDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -72,30 +71,48 @@ export const EditorUI = () => {
   }, []);
 
   const handleSave = async () => {
-      const json = saveProject('sa3');
-      const fileName = `stickman_project_${Date.now()}.sa3`;
-      const file = new File([json], fileName, { type: 'application/json' });
+      try {
+          const json = saveProject('sa3');
+          // Use Blob first - safest for download fallback and file creation
+          const blob = new Blob([json], { type: 'application/json' });
+          const fileName = `stickman_project_${Date.now()}.sa3`;
 
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-              await navigator.share({
-                  title: 'Stickman Project',
-                  text: 'Here is my stickman animation project.',
-                  files: [file],
-              });
-              return;
-          } catch (error) {
-              console.warn("Share failed", error);
+          let shared = false;
+
+          // Attempt Share if API exists
+          if (navigator.share && navigator.canShare) {
+             try {
+                 // Construct File for sharing
+                 const file = new File([blob], fileName, { type: 'application/json' });
+                 if (navigator.canShare({ files: [file] })) {
+                     await navigator.share({
+                         files: [file],
+                         title: 'Stickman Project',
+                         text: 'Here is my stickman animation project.',
+                     });
+                     shared = true;
+                 }
+             } catch (err) {
+                 console.warn("Share failed/cancelled:", err);
+                 // Proceed to fallback download
+             }
           }
-      }
 
-      const url = URL.createObjectURL(file);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+          if (!shared) {
+              // Fallback: Direct Download
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = fileName;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+          }
+      } catch (e) {
+          console.error("Save failed:", e);
+          alert("Save failed: " + e);
+      }
   };
 
   const handleLoad = () => {

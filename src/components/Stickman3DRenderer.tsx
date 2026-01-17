@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, TransformControls, Sphere, Html } from '@react-three/drei';
-import { useStickmanStore, CameraView } from '../store/useStickmanStore';
+import { OrbitControls, TransformControls, Sphere } from '@react-three/drei';
+import { useStickmanStore } from '../store/useStickmanStore';
 import { StickmanNode } from '../core/StickmanNode';
 import { Object3D, Vector3, Quaternion, Euler } from 'three';
 import { useRef, useMemo, useEffect } from 'react';
