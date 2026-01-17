@@ -135,9 +135,9 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
             const isSa3 = data.format === 'sa3' || !!data.skin || !!data.polygons;
 
             // Logic for SAP (Legacy) vs SA3
-            // SAP: Reduce size to half (0.5), Invert Y (-1), Align to Floor
+            // SAP: Reduce size to 1/4 (0.25), Invert Y (-1), Align to Floor
             // SA3: Native scale (1.0), Native Y (1), No Alignment needed (already saved correctly)
-            const SCALE = isSa3 ? 1.0 : 0.5;
+            const SCALE = isSa3 ? 1.0 : 0.25;
             const INVERT_Y = isSa3 ? 1.0 : -1.0;
 
             const clipsData = data.clips || (data.keyframes ? [data] : []);

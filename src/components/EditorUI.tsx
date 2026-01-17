@@ -28,15 +28,33 @@ export const EditorUI = () => {
       return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
       // Save as SA3 by default as requested
       const json = saveProject('sa3');
+      const filename = `stickman_project_${Date.now()}.sa3`;
+      const file = new File([json], filename, { type: 'application/json' });
+
+      // Try Web Share API first
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+              await navigator.share({
+                  files: [file],
+                  title: 'Stickman Project',
+                  text: 'My stickman animation project'
+              });
+              return;
+          } catch (error) {
+              console.warn('Share failed, falling back to download', error);
+          }
+      }
+
+      // Fallback to Download Link
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       // Extension is now .sa3
-      link.download = `stickman_project_${Date.now()}.sa3`;
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
