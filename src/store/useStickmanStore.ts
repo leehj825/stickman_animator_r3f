@@ -209,15 +209,47 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     setViewHeight: (height) => set({ viewHeight: height }),
 
     setHeadRadius: (radius) => {
-        const { currentSkeleton } = get();
+        const { currentSkeleton, clips } = get();
+
+        // Update current skeleton
         currentSkeleton.headRadius = radius;
-        set({ currentSkeleton: currentSkeleton });
+
+        // Update all keyframes in all clips to match the new global head size
+        const updatedClips = clips.map(clip => ({
+            ...clip,
+            keyframes: clip.keyframes.map(kf => {
+                const newSkeleton = kf.skeleton.clone();
+                newSkeleton.headRadius = radius;
+                return {
+                    ...kf,
+                    skeleton: newSkeleton
+                };
+            })
+        }));
+
+        set({ currentSkeleton: currentSkeleton, clips: updatedClips });
     },
 
     setStrokeWidth: (width) => {
-        const { currentSkeleton } = get();
+        const { currentSkeleton, clips } = get();
+
+        // Update current skeleton
         currentSkeleton.strokeWidth = width;
-        set({ currentSkeleton: currentSkeleton });
+
+        // Update all keyframes in all clips to match the new global stroke width
+        const updatedClips = clips.map(clip => ({
+            ...clip,
+            keyframes: clip.keyframes.map(kf => {
+                const newSkeleton = kf.skeleton.clone();
+                newSkeleton.strokeWidth = width;
+                return {
+                    ...kf,
+                    skeleton: newSkeleton
+                };
+            })
+        }));
+
+        set({ currentSkeleton: currentSkeleton, clips: updatedClips });
     },
 
     setActiveClip: (id) => {
