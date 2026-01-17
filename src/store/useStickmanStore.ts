@@ -14,6 +14,10 @@ interface StickmanState {
   editMode: boolean;
   selectedNodeId: string | null;
 
+  // New SA3 Data
+  skin: any; // Placeholder for skin data
+  polygons: any; // Placeholder for polygon data
+
   // Actions
   togglePlay: () => void;
   setEditMode: (enabled: boolean) => void;
@@ -21,7 +25,7 @@ interface StickmanState {
   updateNodePosition: (id: string, position: Vector3) => void;
   addKeyframe: () => void;
   loadProject: (json: string) => void;
-  saveProject: () => string;
+  saveProject: (format?: 'sap' | 'sa3') => string;
   setCurrentTime: (time: number) => void;
 
   // Playlist Actions
@@ -49,6 +53,8 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     currentTime: 0,
     editMode: true,
     selectedNodeId: null,
+    skin: null,
+    polygons: null,
 
     togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
 
@@ -124,27 +130,37 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     loadProject: (json) => {
         try {
             const data = JSON.parse(json);
+
+            // Detect Format
+            const isSa3 = data.format === 'sa3' || !!data.skin || !!data.polygons;
+
+            // Logic for SAP (Legacy) vs SA3
+            // SAP: Reduce size to half (0.5), Invert Y (-1), Align to Floor
+            // SA3: Native scale (1.0), Native Y (1), No Alignment needed (already saved correctly)
+            const SCALE = isSa3 ? 1.0 : 0.5;
+            const INVERT_Y = isSa3 ? 1.0 : -1.0;
+
             const clipsData = data.clips || (data.keyframes ? [data] : []);
-
             if (clipsData.length === 0) return;
-
-            // SCALING FACTORS to fix "Too Large" and "Upside Down"
-            // Reduced to 0.05 to match new half-size default
-            const SCALE = 0.05;
-            const INVERT_Y = -1;
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const reconstructNode = (nodeData: any): StickmanNode => {
                 const pos = new Vector3();
                 if (Array.isArray(nodeData.pos)) {
-                    // Apply Fix: Scale and Invert Y
+                    // Apply Scale and Invert Y
                     pos.set(
                         nodeData.pos[0] * SCALE,
                         nodeData.pos[1] * SCALE * INVERT_Y,
                         nodeData.pos[2] * SCALE
                     );
                 } else if (nodeData.position) {
-                    pos.copy(nodeData.position);
+                    // If loading from JSON.stringify, it might be object {x,y,z}
+                    // We still apply scale if it's a raw load, but usually SA3 keeps values correct
+                    pos.set(
+                        (nodeData.position.x || 0) * SCALE,
+                        (nodeData.position.y || 0) * (isSa3 ? 1 : INVERT_Y), // Only invert if SAP
+                        (nodeData.position.z || 0) * SCALE
+                    );
                 }
                 const node = new StickmanNode(nodeData.id || nodeData.name, pos, nodeData.id);
                 if (nodeData.children) {
@@ -161,8 +177,8 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                     const skelData = kf.pose || kf.skeleton;
                     const skeleton = new StickmanSkeleton(
                         undefined,
-                        (skelData.headRadius || data.headRadius || 6.0) * SCALE, // Scale visuals too
-                        (skelData.strokeWidth || data.strokeWidth || 4.6) * SCALE
+                        (skelData.headRadius || data.headRadius || 0.1) * (isSa3 ? 1 : SCALE),
+                        (skelData.strokeWidth || data.strokeWidth || 0.02) * (isSa3 ? 1 : SCALE)
                     );
                     skeleton.root = reconstructNode(skelData.root || skelData);
                     return {
@@ -172,14 +188,9 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                     };
                 });
 
-                // Calculate exact duration from max timestamp if possible
                 let duration = clipData.duration || 5.0;
                 if (keyframes.length > 0) {
                      const maxTime = Math.max(...keyframes.map((k: any) => k.timestamp));
-                     // If imported duration is default 5.0 but maxTime is smaller, strictly use maxTime?
-                     // Or if maxTime > duration, extend it.
-                     // User said "set exact animation length". So maxTime is the source of truth.
-                     // We add a tiny buffer or just strict maxTime. Strict maxTime allows looping perfectly.
                      duration = maxTime > 0 ? maxTime : 5.0;
                 }
 
@@ -191,20 +202,63 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 };
             });
 
+            // --- Post-Processing for SAP files: Align to Bottom Grid ---
+            if (!isSa3 && reconstructedClips.length > 0) {
+                // 1. Find the lowest Y point (minY) in the first frame of the animation
+                // This assumes the first frame represents a "standing" or standard pose.
+                let minY = Infinity;
+
+                const firstClip = reconstructedClips[0];
+                const firstSkeleton = firstClip.keyframes.length > 0
+                    ? firstClip.keyframes[0].skeleton
+                    : new StickmanSkeleton(); // Fallback if no keyframes
+
+                const traverseAndFindMin = (node: StickmanNode) => {
+                    // Assuming node.position is World/Model Space (based on project structure)
+                    if (node.position.y < minY) minY = node.position.y;
+                    node.children.forEach(traverseAndFindMin);
+                };
+
+                // If it's a fresh skeleton (no nodes loaded), minY stays Infinity
+                if (firstClip.keyframes.length > 0) {
+                    traverseAndFindMin(firstSkeleton.root);
+                }
+
+                if (minY !== Infinity) {
+                    // We want the lowest point to be at Y=0 (or slightly above if stroke width?)
+                    // Let's just put it exactly on 0 for now.
+                    const offsetY = -minY;
+
+                    // Apply this offset to ALL nodes in ALL keyframes to maintain animation consistency
+                    reconstructedClips.forEach(clip => {
+                        clip.keyframes.forEach(kf => {
+                            const applyOffset = (node: StickmanNode) => {
+                                node.position.y += offsetY;
+                                node.children.forEach(applyOffset);
+                            };
+                            applyOffset(kf.skeleton.root);
+                        });
+                    });
+                    console.log(`SAP Import: Aligned floor by moving up ${offsetY.toFixed(4)} units.`);
+                }
+            }
+
             // Set State
             const firstClip = reconstructedClips[0];
             const startSkel = firstClip.keyframes.length > 0
                 ? firstClip.keyframes[0].skeleton.clone()
-                : new StickmanSkeleton(); // Should also apply scale to default if needed
+                : new StickmanSkeleton();
 
             set({
                 clips: reconstructedClips,
                 activeClipId: firstClip.id,
                 currentSkeleton: startSkel,
                 currentTime: 0,
-                isPlaying: false
+                isPlaying: false,
+                skin: data.skin || null,
+                polygons: data.polygons || null
             });
-            console.log("Project loaded with Scale correction.");
+            console.log(`Project loaded (${isSa3 ? 'SA3' : 'SAP Legacy'}).`);
 
         } catch (e) {
             console.error("Failed to load project", e);
@@ -212,14 +266,14 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
         }
     },
 
-    saveProject: () => {
-        const { clips, currentSkeleton } = get();
-        // Undo scaling for save? Or keep as new format?
-        // Let's keep the R3F format as the new standard (no un-scaling).
+    saveProject: (format = 'sa3') => {
+        const { clips, currentSkeleton, skin, polygons } = get();
 
+        // Serialize Nodes
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const serializeNode = (node: StickmanNode): any => ({
             id: node.id,
+            // Save full precision positions
             pos: [node.position.x, node.position.y, node.position.z],
             children: node.children.map(serializeNode)
         });
@@ -237,12 +291,17 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
             }))
         }));
 
-        return JSON.stringify({
-            version: 2,
+        const data = {
+            format: format,
+            version: 3,
             clips: serializedClips,
             headRadius: currentSkeleton.headRadius,
             strokeWidth: currentSkeleton.strokeWidth,
-        });
+            skin: skin || {},      // Save placeholder or existing skin
+            polygons: polygons || [] // Save placeholder or existing polygons
+        };
+
+        return JSON.stringify(data, null, 2);
     },
 
     setCurrentTime: (time) => set({ currentTime: time }),

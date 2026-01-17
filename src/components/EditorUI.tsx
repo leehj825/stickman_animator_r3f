@@ -29,12 +29,14 @@ export const EditorUI = () => {
   }, []);
 
   const handleSave = () => {
-      const json = saveProject();
+      // Save as SA3 by default as requested
+      const json = saveProject('sa3');
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `stickman_project_${Date.now()}.sap`;
+      // Extension is now .sa3
+      link.download = `stickman_project_${Date.now()}.sa3`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -43,7 +45,8 @@ export const EditorUI = () => {
   const handleLoad = () => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.json,.sap,application/json,text/plain,application/octet-stream';
+      // Added .sa3 to accepted files
+      input.accept = '.json,.sap,.sa3,application/json,text/plain,application/octet-stream';
       input.onchange = (e) => {
           const file = (e.target as HTMLInputElement).files?.[0];
           if (file) {
@@ -71,10 +74,10 @@ export const EditorUI = () => {
                 <MousePointer2 size={20} />
             </button>
             <div className="h-6 w-px bg-white/20 mx-2"></div>
-            <button className="p-2 rounded hover:bg-white/20" onClick={handleSave} title="Save">
+            <button className="p-2 rounded hover:bg-white/20" onClick={handleSave} title="Save Project (.sa3)">
                 <Save size={20} />
             </button>
-            <button className="p-2 rounded hover:bg-white/20" onClick={handleLoad} title="Load">
+            <button className="p-2 rounded hover:bg-white/20" onClick={handleLoad} title="Load Project">
                 <FolderOpen size={20} />
             </button>
         </div>
