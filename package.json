@@ -14,7 +14,9 @@
   "dependencies": {
     "@capacitor/android": "^5.7.0",
     "@capacitor/core": "^5.7.0",
+    "@capacitor/filesystem": "^5.2.2",
     "@capacitor/ios": "^5.7.0",
+    "@capacitor/share": "^5.0.8",
     "@react-three/drei": "^9.99.0",
     "@react-three/fiber": "^8.15.16",
     "clsx": "^2.1.0",

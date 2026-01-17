@@ -2,6 +2,9 @@ import { useStickmanStore } from '../store/useStickmanStore';
 import { Play, Pause, Plus, Film, ChevronDown, Share2, FolderOpen } from 'lucide-react';
 import clsx from 'clsx';
 import { useState, useRef, useEffect } from 'react';
+import { Share } from '@capacitor/share';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Capacitor } from '@capacitor/core';
 
 // Vertical Slider Component
 const VerticalSlider = ({ value, min, max, onChange, label }: { value: number, min: number, max: number, onChange: (v: number) => void, label: string }) => {
@@ -50,8 +53,6 @@ export const EditorUI = () => {
       currentSkeleton,
       cameraView, setCameraView,
       axisMode, setAxisMode,
-      viewZoom, setViewZoom,
-      viewHeight, setViewHeight,
       setHeadRadius, setStrokeWidth
   } = useStickmanStore();
 
@@ -70,20 +71,72 @@ export const EditorUI = () => {
       return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSave = async () => {
+  const handleSave = async (format: 'sa3' | 'sap' = 'sa3') => {
       try {
-          const json = saveProject('sa3');
-          // Use Blob first - safest for download fallback and file creation
-          const blob = new Blob([json], { type: 'application/json' });
-          const fileName = `stickman_project_${Date.now()}.sa3`;
+          const json = saveProject(format);
+          const fileName = `stickman_project_${Date.now()}.${format}`;
 
+          if (Capacitor.isNativePlatform()) {
+              // Android / iOS Logic
+              try {
+                  const writeResult = await Filesystem.writeFile({
+                      path: fileName,
+                      data: json,
+                      directory: Directory.Cache,
+                      encoding: Encoding.UTF8,
+                  });
+
+                  await Share.share({
+                      title: 'Stickman Project',
+                      text: 'Here is my stickman animation project.',
+                      url: writeResult.uri,
+                      dialogTitle: 'Save Project',
+                  });
+              } catch (err) {
+                  console.error("Native Save Failed:", err);
+                  alert("Save failed: " + err);
+              }
+              return;
+          }
+
+          // Step 1: Desktop "Save As" (File System Access API)
+          // Use type assertion to avoid TS errors if types aren't available
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (typeof (window as any).showSaveFilePicker === 'function') {
+              try {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const handle = await (window as any).showSaveFilePicker({
+                      suggestedName: fileName,
+                      types: [{
+                          description: 'Stickman Project',
+                          accept: { 'application/json': ['.' + format] },
+                      }],
+                  });
+                  const writable = await handle.createWritable();
+                  await writable.write(json);
+                  await writable.close();
+                  return; // Success
+              } catch (err: unknown) {
+                  // Ignore AbortError (user cancelled)
+                  if ((err as Error).name !== 'AbortError') {
+                      console.error("FilePicker failed:", err);
+                      // Fallthrough to other methods if it wasn't a user cancel?
+                      // No, usually if picker fails technically we might fallback, but if user cancels we stop.
+                      // Let's fallback only if it's not AbortError.
+                      throw err;
+                  }
+                  return;
+              }
+          }
+
+          // Step 2: Mobile Web / Share Sheet (navigator.share)
           let shared = false;
+          // Use text/plain for broader compatibility on Android/Share Sheet
+          const blob = new Blob([json], { type: 'text/plain' });
 
-          // Attempt Share if API exists
           if (navigator.share && navigator.canShare) {
              try {
-                 // Construct File for sharing
-                 const file = new File([blob], fileName, { type: 'application/json' });
+                 const file = new File([blob], fileName, { type: 'text/plain' });
                  if (navigator.canShare({ files: [file] })) {
                      await navigator.share({
                          files: [file],
@@ -98,8 +151,8 @@ export const EditorUI = () => {
              }
           }
 
+          // Step 3: Fallback (Legacy Download Link)
           if (!shared) {
-              // Fallback: Direct Download
               const url = URL.createObjectURL(blob);
               const link = document.createElement('a');
               link.href = url;
@@ -118,7 +171,8 @@ export const EditorUI = () => {
   const handleLoad = () => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.json,.sap,.sa3,application/json';
+      // Use */* to allow picking any file (fixes grayed out files on Google Drive/Android)
+      input.accept = '*/*';
       input.onchange = (e) => {
           const file = (e.target as HTMLInputElement).files?.[0];
           if (file) {
@@ -160,12 +214,6 @@ export const EditorUI = () => {
               <MiniBtn label="X" active={cameraView === 'side'} color="#ef4444" onClick={() => setCameraView('side')} />
               <MiniBtn label="Y" active={cameraView === 'top'} color="#22c55e" onClick={() => setCameraView('top')} />
               <MiniBtn label="Z" active={cameraView === 'front'} color="#3b82f6" onClick={() => setCameraView('front')} />
-          </div>
-
-          {/* Sliders */}
-          <div className="bg-black/60 backdrop-blur-md rounded-lg p-1 flex flex-col items-center">
-              <VerticalSlider label="Hgt" value={viewHeight} min={-5} max={10} onChange={setViewHeight} />
-              <VerticalSlider label="Zm" value={viewZoom} min={1} max={20} onChange={setViewZoom} />
           </div>
       </div>
 
@@ -270,8 +318,8 @@ export const EditorUI = () => {
 
         {/* Toolbar (Common) */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
-             <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={handleSave}>
-                 <Share2 size={12}/> Save / Share
+             <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={() => handleSave('sa3')}>
+                 <Share2 size={12}/> Save Project
              </button>
              <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={handleLoad}>
                  <FolderOpen size={12}/> Load

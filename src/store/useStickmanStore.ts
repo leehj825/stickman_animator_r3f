@@ -13,6 +13,7 @@ interface StickmanState {
   currentTime: number;
   editMode: boolean;
   selectedNodeId: string | null;
+  modeType: 'pose' | 'animate';
 
   // New SA3 Data
   skin: any;
@@ -33,6 +34,7 @@ interface StickmanState {
   loadProject: (json: string) => void;
   saveProject: (format?: 'sap' | 'sa3') => string;
   setCurrentTime: (time: number) => void;
+  setModeType: (mode: 'pose' | 'animate') => void;
 
   // UI Actions
   setCameraView: (view: 'front' | 'side' | 'top' | 'free') => void;
@@ -188,6 +190,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     selectedNodeId: null,
     skin: null,
     polygons: null,
+    modeType: 'pose',
 
     // View Defaults
     cameraView: 'free',
@@ -198,6 +201,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
     setEditMode: (enabled) => set({ editMode: enabled }),
     selectNode: (id) => set({ selectedNodeId: id }),
+    setModeType: (mode) => set({ modeType: mode }),
 
     setCameraView: (view) => set({ cameraView: view }),
     setAxisMode: (mode) => set({ axisMode: mode }),
@@ -315,11 +319,67 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
         try {
             const data = JSON.parse(json);
             const isSa3 = data.format === 'sa3' || !!data.skin || !!data.polygons;
-            const SCALE = isSa3 ? 1.0 : 0.25; // Adjusted as per your preference (was 0.05, let's stick to 0.25 or 1.0)
+            let SCALE = 1.0;
+            let verticalOffset = 0.0;
             const INVERT_Y = isSa3 ? 1.0 : -1.0;
 
             const clipsData = data.clips || (data.keyframes ? [data] : []);
             if (clipsData.length === 0) return;
+
+            // Auto-Normalization Logic
+            if (!isSa3 && clipsData.length > 0) {
+                // Find Min/Max Y from the first frame of the first clip to determine height
+                let minY = Infinity;
+                let maxY = -Infinity;
+
+                // Helper to parse legacy position
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const getLegacyPos = (nodeData: any) => {
+                    if (Array.isArray(nodeData.pos)) {
+                        return { y: nodeData.pos[1] * INVERT_Y };
+                    } else if (nodeData.position) {
+                        return { y: (nodeData.position.y || 0) * INVERT_Y };
+                    }
+                    return { y: 0 };
+                };
+
+                // Traverse the first frame's root
+                const firstClip = clipsData[0];
+                const firstKeyframe = (firstClip.keyframes || [])[0];
+                if (firstKeyframe) {
+                    const skelData = firstKeyframe.pose || firstKeyframe.skeleton;
+                    const rootData = skelData.root || skelData;
+
+                    // recursive traversal to find min/max Y
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const traverse = (nodeData: any) => {
+                        const { y } = getLegacyPos(nodeData);
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                        if (nodeData.children) {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            nodeData.children.forEach((child: any) => traverse(child));
+                        }
+                    };
+                    traverse(rootData);
+
+                    const currentHeight = maxY - minY;
+                    // Avoid division by zero if height is weirdly 0
+                    if (currentHeight > 0.01) {
+                         const TARGET_HEIGHT = 2.0;
+                         SCALE = TARGET_HEIGHT / currentHeight;
+                         // Lowest point is (minY * SCALE). We want it at 0.
+                         // So we add offset: minY * SCALE + offset = 0 => offset = -minY * SCALE
+                         verticalOffset = -(minY * SCALE);
+                    } else {
+                         SCALE = 0.25; // Fallback
+                         verticalOffset = 0;
+                    }
+                } else {
+                    SCALE = 0.25; // Fallback
+                }
+            }
+
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const reconstructNode = (nodeData: any): StickmanNode => {
@@ -327,13 +387,13 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 if (Array.isArray(nodeData.pos)) {
                     pos.set(
                         nodeData.pos[0] * SCALE,
-                        nodeData.pos[1] * SCALE * INVERT_Y,
+                        (nodeData.pos[1] * INVERT_Y * SCALE) + verticalOffset,
                         nodeData.pos[2] * SCALE
                     );
                 } else if (nodeData.position) {
                     pos.set(
                         (nodeData.position.x || 0) * SCALE,
-                        (nodeData.position.y || 0) * (isSa3 ? 1 : INVERT_Y),
+                        ((nodeData.position.y || 0) * INVERT_Y * SCALE) + verticalOffset,
                         (nodeData.position.z || 0) * SCALE
                     );
                 }
@@ -350,10 +410,11 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const keyframes = (clipData.keyframes || []).map((kf: any) => {
                     const skelData = kf.pose || kf.skeleton;
+                    // Scale radius and stroke width too
                     const skeleton = new StickmanSkeleton(
                         undefined,
-                        (skelData.headRadius || data.headRadius || 0.1) * (isSa3 ? 1 : SCALE),
-                        (skelData.strokeWidth || data.strokeWidth || 0.02) * (isSa3 ? 1 : SCALE)
+                        (skelData.headRadius || data.headRadius || 0.1) * SCALE,
+                        (skelData.strokeWidth || data.strokeWidth || 0.02) * SCALE
                     );
                     skeleton.root = reconstructNode(skelData.root || skelData);
                     return {
@@ -374,31 +435,6 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                     keyframes: keyframes
                 };
             });
-
-            if (!isSa3 && reconstructedClips.length > 0) {
-                let minY = Infinity;
-                const firstClip = reconstructedClips[0];
-                const firstSkeleton = firstClip.keyframes.length > 0
-                    ? firstClip.keyframes[0].skeleton
-                    : new StickmanSkeleton();
-                const traverseAndFindMin = (node: StickmanNode) => {
-                    if (node.position.y < minY) minY = node.position.y;
-                    node.children.forEach(traverseAndFindMin);
-                };
-                if (firstClip.keyframes.length > 0) traverseAndFindMin(firstSkeleton.root);
-                if (minY !== Infinity) {
-                    const offsetY = -minY;
-                    reconstructedClips.forEach(clip => {
-                        clip.keyframes.forEach(kf => {
-                            const applyOffset = (node: StickmanNode) => {
-                                node.position.y += offsetY;
-                                node.children.forEach(applyOffset);
-                            };
-                            applyOffset(kf.skeleton.root);
-                        });
-                    });
-                }
-            }
 
             const firstClip = reconstructedClips[0];
             const startSkel = firstClip.keyframes.length > 0
@@ -422,7 +458,48 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     },
 
     saveProject: (format = 'sa3') => {
-        const { clips, currentSkeleton, skin, polygons } = get();
+        const { clips, currentSkeleton, activeClipId, skin, polygons } = get();
+
+        if (format === 'sap') {
+            // Legacy Export Logic
+            const activeClip = clips.find(c => c.id === activeClipId);
+            if (!activeClip) return "{}";
+
+            const LEGACY_SCALE = 4.0; // Inverse of 0.25
+            const INVERT_Y = -1.0;
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const serializeNodeLegacy = (node: StickmanNode): any => ({
+                id: node.id,
+                // Apply Inverse Transform: x*4, y*-4, z*4
+                pos: [
+                    node.position.x * LEGACY_SCALE,
+                    node.position.y * LEGACY_SCALE * INVERT_Y,
+                    node.position.z * LEGACY_SCALE
+                ],
+                children: node.children.map(serializeNodeLegacy)
+            });
+
+            const data = {
+                id: activeClip.id,
+                name: activeClip.name,
+                duration: activeClip.duration,
+                headRadius: currentSkeleton.headRadius * LEGACY_SCALE,
+                strokeWidth: currentSkeleton.strokeWidth * LEGACY_SCALE,
+                keyframes: activeClip.keyframes.map(kf => ({
+                    id: kf.id,
+                    timestamp: kf.timestamp,
+                    pose: {
+                        root: serializeNodeLegacy(kf.skeleton.root),
+                        headRadius: kf.skeleton.headRadius * LEGACY_SCALE,
+                        strokeWidth: kf.skeleton.strokeWidth * LEGACY_SCALE
+                    }
+                }))
+            };
+            return JSON.stringify(data, null, 2);
+        }
+
+        // SA3 Export Logic (Default)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const serializeNode = (node: StickmanNode): any => ({
             id: node.id,
