@@ -71,16 +71,45 @@ export const EditorUI = () => {
   const handleSave = async (format: 'sa3' | 'sap' = 'sa3') => {
       try {
           const json = saveProject(format);
-          // Use text/plain for broad compatibility especially with Android/Share Sheet
-          const blob = new Blob([json], { type: 'text/plain' });
           const fileName = `stickman_project_${Date.now()}.${format}`;
 
-          let shared = false;
+          // Step 1: Desktop "Save As" (File System Access API)
+          // Use type assertion to avoid TS errors if types aren't available
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (typeof (window as any).showSaveFilePicker === 'function') {
+              try {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const handle = await (window as any).showSaveFilePicker({
+                      suggestedName: fileName,
+                      types: [{
+                          description: 'Stickman Project',
+                          accept: { 'application/json': ['.' + format] },
+                      }],
+                  });
+                  const writable = await handle.createWritable();
+                  await writable.write(json);
+                  await writable.close();
+                  return; // Success
+              } catch (err: unknown) {
+                  // Ignore AbortError (user cancelled)
+                  if ((err as Error).name !== 'AbortError') {
+                      console.error("FilePicker failed:", err);
+                      // Fallthrough to other methods if it wasn't a user cancel?
+                      // No, usually if picker fails technically we might fallback, but if user cancels we stop.
+                      // Let's fallback only if it's not AbortError.
+                      throw err;
+                  }
+                  return;
+              }
+          }
 
-          // Attempt Share if API exists
+          // Step 2: Mobile / Share Sheet (navigator.share)
+          let shared = false;
+          // Use text/plain for broader compatibility on Android/Share Sheet
+          const blob = new Blob([json], { type: 'text/plain' });
+
           if (navigator.share && navigator.canShare) {
              try {
-                 // Construct File for sharing with text/plain mime type
                  const file = new File([blob], fileName, { type: 'text/plain' });
                  if (navigator.canShare({ files: [file] })) {
                      await navigator.share({
@@ -96,8 +125,8 @@ export const EditorUI = () => {
              }
           }
 
+          // Step 3: Fallback (Legacy Download Link)
           if (!shared) {
-              // Fallback: Direct Download
               const url = URL.createObjectURL(blob);
               const link = document.createElement('a');
               link.href = url;
@@ -160,8 +189,6 @@ export const EditorUI = () => {
               <MiniBtn label="Y" active={cameraView === 'top'} color="#22c55e" onClick={() => setCameraView('top')} />
               <MiniBtn label="Z" active={cameraView === 'front'} color="#3b82f6" onClick={() => setCameraView('front')} />
           </div>
-
-          {/* Sliders Removed */}
       </div>
 
       {/* Right Panel: Axis & Style Controls */}
