@@ -13,6 +13,7 @@ interface StickmanState {
   currentTime: number;
   editMode: boolean;
   selectedNodeId: string | null;
+  modeType: 'pose' | 'animate';
 
   // New SA3 Data
   skin: any;
@@ -33,6 +34,7 @@ interface StickmanState {
   loadProject: (json: string) => void;
   saveProject: (format?: 'sap' | 'sa3') => string;
   setCurrentTime: (time: number) => void;
+  setModeType: (mode: 'pose' | 'animate') => void;
 
   // UI Actions
   setCameraView: (view: 'front' | 'side' | 'top' | 'free') => void;
@@ -188,6 +190,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     selectedNodeId: null,
     skin: null,
     polygons: null,
+    modeType: 'pose',
 
     // View Defaults
     cameraView: 'free',
@@ -198,6 +201,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
     setEditMode: (enabled) => set({ editMode: enabled }),
     selectNode: (id) => set({ selectedNodeId: id }),
+    setModeType: (mode) => set({ modeType: mode }),
 
     setCameraView: (view) => set({ cameraView: view }),
     setAxisMode: (mode) => set({ axisMode: mode }),
