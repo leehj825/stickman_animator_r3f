@@ -1,5 +1,5 @@
 import { useStickmanStore } from '../store/useStickmanStore';
-import { Play, Pause, Save, FolderOpen, Plus, MousePointer2, Film, Pencil, Check, ChevronDown } from 'lucide-react';
+import { Play, Pause, Save, FolderOpen, Plus, MousePointer2, Film, Pencil, Check, ChevronDown, Share2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useState, useRef, useEffect } from 'react';
 
@@ -29,41 +29,38 @@ export const EditorUI = () => {
   }, []);
 
   const handleSave = async () => {
-      // Save as SA3 by default as requested
       const json = saveProject('sa3');
-      const filename = `stickman_project_${Date.now()}.sa3`;
-      const file = new File([json], filename, { type: 'application/json' });
+      const fileName = `stickman_project_${Date.now()}.sa3`;
+      const file = new File([json], fileName, { type: 'application/json' });
 
-      // Try Web Share API first
+      // Try Native Share (Mobile/Drive support)
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
           try {
               await navigator.share({
-                  files: [file],
                   title: 'Stickman Project',
-                  text: 'My stickman animation project'
+                  text: 'Here is my stickman animation project.',
+                  files: [file],
               });
-              return;
+              return; // Success
           } catch (error) {
-              console.warn('Share failed, falling back to download', error);
+              console.warn("Share failed or cancelled, falling back to download", error);
           }
       }
 
-      // Fallback to Download Link
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
+      // Fallback: Direct Download
+      const url = URL.createObjectURL(file);
       const link = document.createElement('a');
       link.href = url;
-      // Extension is now .sa3
-      link.download = filename;
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
   };
 
   const handleLoad = () => {
       const input = document.createElement('input');
       input.type = 'file';
-      // Added .sa3 to accepted files
       input.accept = '.json,.sap,.sa3,application/json,text/plain,application/octet-stream';
       input.onchange = (e) => {
           const file = (e.target as HTMLInputElement).files?.[0];
@@ -92,15 +89,15 @@ export const EditorUI = () => {
                 <MousePointer2 size={20} />
             </button>
             <div className="h-6 w-px bg-white/20 mx-2"></div>
-            <button className="p-2 rounded hover:bg-white/20" onClick={handleSave} title="Save Project (.sa3)">
-                <Save size={20} />
+            <button className="p-2 rounded hover:bg-white/20" onClick={handleSave} title="Save / Share">
+                <Share2 size={20} />
             </button>
-            <button className="p-2 rounded hover:bg-white/20" onClick={handleLoad} title="Load Project">
+            <button className="p-2 rounded hover:bg-white/20" onClick={handleLoad} title="Load">
                 <FolderOpen size={20} />
             </button>
         </div>
 
-        {/* Animation Selector (Compact Dropdown) */}
+        {/* Animation Selector */}
         <div className="relative" ref={dropdownRef}>
             <div
                 className="flex items-center bg-black/50 hover:bg-black/70 rounded-lg backdrop-blur-sm text-white cursor-pointer select-none"

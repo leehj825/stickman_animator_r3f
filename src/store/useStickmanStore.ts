@@ -13,10 +13,8 @@ interface StickmanState {
   currentTime: number;
   editMode: boolean;
   selectedNodeId: string | null;
-
-  // New SA3 Data
-  skin: any; // Placeholder for skin data
-  polygons: any; // Placeholder for polygon data
+  skin: any;
+  polygons: any;
 
   // Actions
   togglePlay: () => void;
@@ -35,7 +33,6 @@ interface StickmanState {
 }
 
 export const useStickmanStore = create<StickmanState>((set, get) => {
-  // Helper to create a default clip
   const createDefaultClip = (): StickmanClip => ({
     id: uuidv4(),
     name: 'New Animation',
@@ -46,7 +43,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
   const defaultClip = createDefaultClip();
 
   return {
-    currentSkeleton: new StickmanSkeleton(),
+    currentSkeleton: new StickmanSkeleton(), // Uses new defaults from StickmanSkeleton.ts
     clips: [defaultClip],
     activeClipId: defaultClip.id,
     isPlaying: false,
@@ -66,7 +63,6 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
         const { clips } = get();
         const clip = clips.find(c => c.id === id);
         if (clip) {
-            // Restore the first keyframe of the clip to the skeleton if it exists
             const startSkeleton = clip.keyframes.length > 0
                 ? clip.keyframes[0].skeleton.clone()
                 : new StickmanSkeleton();
@@ -99,7 +95,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     updateNodePosition: (id, position) => {
       const { currentSkeleton } = get();
       currentSkeleton.updateNodePosition(id, position);
-      set({ currentSkeleton: currentSkeleton }); // Force update
+      set({ currentSkeleton: currentSkeleton });
     },
 
     addKeyframe: () => {
@@ -115,8 +111,6 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
       };
 
       const newKeyframes = [...activeClip.keyframes, newKeyframe].sort((a, b) => a.timestamp - b.timestamp);
-
-      // Update duration if necessary
       const maxTimestamp = newKeyframes.length > 0 ? newKeyframes[newKeyframes.length - 1].timestamp : 0;
       const newDuration = Math.max(activeClip.duration, maxTimestamp);
 
@@ -130,14 +124,10 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     loadProject: (json) => {
         try {
             const data = JSON.parse(json);
-
-            // Detect Format
             const isSa3 = data.format === 'sa3' || !!data.skin || !!data.polygons;
 
-            // Logic for SAP (Legacy) vs SA3
-            // SAP: Reduce size to 1/4 (0.25), Invert Y (-1), Align to Floor
-            // SA3: Native scale (1.0), Native Y (1), No Alignment needed (already saved correctly)
-            const SCALE = isSa3 ? 1.0 : 0.25;
+            // FIX: Use 0.05 for SAP to shrink it drastically (since you said it was too large)
+            const SCALE = isSa3 ? 1.0 : 0.05;
             const INVERT_Y = isSa3 ? 1.0 : -1.0;
 
             const clipsData = data.clips || (data.keyframes ? [data] : []);
@@ -147,18 +137,15 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
             const reconstructNode = (nodeData: any): StickmanNode => {
                 const pos = new Vector3();
                 if (Array.isArray(nodeData.pos)) {
-                    // Apply Scale and Invert Y
                     pos.set(
                         nodeData.pos[0] * SCALE,
                         nodeData.pos[1] * SCALE * INVERT_Y,
                         nodeData.pos[2] * SCALE
                     );
                 } else if (nodeData.position) {
-                    // If loading from JSON.stringify, it might be object {x,y,z}
-                    // We still apply scale if it's a raw load, but usually SA3 keeps values correct
                     pos.set(
                         (nodeData.position.x || 0) * SCALE,
-                        (nodeData.position.y || 0) * (isSa3 ? 1 : INVERT_Y), // Only invert if SAP
+                        (nodeData.position.y || 0) * (isSa3 ? 1 : INVERT_Y),
                         (nodeData.position.z || 0) * SCALE
                     );
                 }
@@ -175,10 +162,14 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const keyframes = (clipData.keyframes || []).map((kf: any) => {
                     const skelData = kf.pose || kf.skeleton;
+                    // Apply Scaling to Thickness/Radius too
+                    const baseHead = (skelData.headRadius || data.headRadius || 6.0);
+                    const baseStroke = (skelData.strokeWidth || data.strokeWidth || 4.6);
+
                     const skeleton = new StickmanSkeleton(
                         undefined,
-                        (skelData.headRadius || data.headRadius || 0.1) * (isSa3 ? 1 : SCALE),
-                        (skelData.strokeWidth || data.strokeWidth || 0.02) * (isSa3 ? 1 : SCALE)
+                        baseHead * SCALE,
+                        baseStroke * SCALE
                     );
                     skeleton.root = reconstructNode(skelData.root || skelData);
                     return {
@@ -202,34 +193,28 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 };
             });
 
-            // --- Post-Processing for SAP files: Align to Bottom Grid ---
+            // --- Floor Alignment Logic ---
             if (!isSa3 && reconstructedClips.length > 0) {
-                // 1. Find the lowest Y point (minY) in the first frame of the animation
-                // This assumes the first frame represents a "standing" or standard pose.
                 let minY = Infinity;
 
                 const firstClip = reconstructedClips[0];
                 const firstSkeleton = firstClip.keyframes.length > 0
                     ? firstClip.keyframes[0].skeleton
-                    : new StickmanSkeleton(); // Fallback if no keyframes
+                    : new StickmanSkeleton();
 
+                // Find global min Y in the first frame
                 const traverseAndFindMin = (node: StickmanNode) => {
-                    // Assuming node.position is World/Model Space (based on project structure)
                     if (node.position.y < minY) minY = node.position.y;
                     node.children.forEach(traverseAndFindMin);
                 };
 
-                // If it's a fresh skeleton (no nodes loaded), minY stays Infinity
                 if (firstClip.keyframes.length > 0) {
                     traverseAndFindMin(firstSkeleton.root);
                 }
 
                 if (minY !== Infinity) {
-                    // We want the lowest point to be at Y=0 (or slightly above if stroke width?)
-                    // Let's just put it exactly on 0 for now.
+                    // Move the lowest point to y=0
                     const offsetY = -minY;
-
-                    // Apply this offset to ALL nodes in ALL keyframes to maintain animation consistency
                     reconstructedClips.forEach(clip => {
                         clip.keyframes.forEach(kf => {
                             const applyOffset = (node: StickmanNode) => {
@@ -243,7 +228,6 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 }
             }
 
-            // Set State
             const firstClip = reconstructedClips[0];
             const startSkel = firstClip.keyframes.length > 0
                 ? firstClip.keyframes[0].skeleton.clone()
@@ -258,7 +242,6 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 skin: data.skin || null,
                 polygons: data.polygons || null
             });
-            console.log(`Project loaded (${isSa3 ? 'SA3' : 'SAP Legacy'}).`);
 
         } catch (e) {
             console.error("Failed to load project", e);
@@ -269,11 +252,9 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     saveProject: (format = 'sa3') => {
         const { clips, currentSkeleton, skin, polygons } = get();
 
-        // Serialize Nodes
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const serializeNode = (node: StickmanNode): any => ({
             id: node.id,
-            // Save full precision positions
             pos: [node.position.x, node.position.y, node.position.z],
             children: node.children.map(serializeNode)
         });
@@ -297,8 +278,8 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
             clips: serializedClips,
             headRadius: currentSkeleton.headRadius,
             strokeWidth: currentSkeleton.strokeWidth,
-            skin: skin || {},      // Save placeholder or existing skin
-            polygons: polygons || [] // Save placeholder or existing polygons
+            skin: skin || {},
+            polygons: polygons || []
         };
 
         return JSON.stringify(data, null, 2);
