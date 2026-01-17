@@ -166,8 +166,10 @@ const CameraController = () => {
         <OrbitControls
             ref={controlsRef}
             makeDefault
-            enabled={cameraView === 'free'} // Disable orbit if locked views
-            enableRotate={cameraView === 'free'}
+            enabled={true} // Always enable controls to allow pan/zoom
+            enableRotate={cameraView === 'free'} // Only allow rotation in free mode
+            enablePan={true}
+            enableZoom={true}
         />
     );
 };
