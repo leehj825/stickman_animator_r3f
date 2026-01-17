@@ -268,9 +268,6 @@ export const EditorUI = () => {
              <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={() => handleSave('sa3')}>
                  <Share2 size={12}/> Save Project
              </button>
-             <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={() => handleSave('sap')}>
-                 <Share2 size={12}/> Export .sap
-             </button>
              <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={handleLoad}>
                  <FolderOpen size={12}/> Load
              </button>
