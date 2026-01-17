@@ -50,8 +50,6 @@ export const EditorUI = () => {
       currentSkeleton,
       cameraView, setCameraView,
       axisMode, setAxisMode,
-      viewZoom, setViewZoom,
-      viewHeight, setViewHeight,
       setHeadRadius, setStrokeWidth
   } = useStickmanStore();
 
@@ -70,12 +68,12 @@ export const EditorUI = () => {
       return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSave = async () => {
+  const handleSave = async (format: 'sa3' | 'sap' = 'sa3') => {
       try {
-          const json = saveProject('sa3');
+          const json = saveProject(format);
           // Use Blob first - safest for download fallback and file creation
           const blob = new Blob([json], { type: 'application/json' });
-          const fileName = `stickman_project_${Date.now()}.sa3`;
+          const fileName = `stickman_project_${Date.now()}.${format}`;
 
           let shared = false;
 
@@ -162,11 +160,7 @@ export const EditorUI = () => {
               <MiniBtn label="Z" active={cameraView === 'front'} color="#3b82f6" onClick={() => setCameraView('front')} />
           </div>
 
-          {/* Sliders */}
-          <div className="bg-black/60 backdrop-blur-md rounded-lg p-1 flex flex-col items-center">
-              <VerticalSlider label="Hgt" value={viewHeight} min={-5} max={10} onChange={setViewHeight} />
-              <VerticalSlider label="Zm" value={viewZoom} min={1} max={20} onChange={setViewZoom} />
-          </div>
+          {/* Sliders Removed */}
       </div>
 
       {/* Right Panel: Axis & Style Controls */}
@@ -270,8 +264,11 @@ export const EditorUI = () => {
 
         {/* Toolbar (Common) */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
-             <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={handleSave}>
-                 <Share2 size={12}/> Save / Share
+             <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={() => handleSave('sa3')}>
+                 <Share2 size={12}/> Save Project
+             </button>
+             <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={() => handleSave('sap')}>
+                 <Share2 size={12}/> Export .sap
              </button>
              <button className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-xs" onClick={handleLoad}>
                  <FolderOpen size={12}/> Load

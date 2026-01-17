@@ -426,7 +426,48 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     },
 
     saveProject: (format = 'sa3') => {
-        const { clips, currentSkeleton, skin, polygons } = get();
+        const { clips, currentSkeleton, activeClipId, skin, polygons } = get();
+
+        if (format === 'sap') {
+            // Legacy Export Logic
+            const activeClip = clips.find(c => c.id === activeClipId);
+            if (!activeClip) return "{}";
+
+            const LEGACY_SCALE = 4.0; // Inverse of 0.25
+            const INVERT_Y = -1.0;
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const serializeNodeLegacy = (node: StickmanNode): any => ({
+                id: node.id,
+                // Apply Inverse Transform: x*4, y*-4, z*4
+                pos: [
+                    node.position.x * LEGACY_SCALE,
+                    node.position.y * LEGACY_SCALE * INVERT_Y,
+                    node.position.z * LEGACY_SCALE
+                ],
+                children: node.children.map(serializeNodeLegacy)
+            });
+
+            const data = {
+                id: activeClip.id,
+                name: activeClip.name,
+                duration: activeClip.duration,
+                headRadius: currentSkeleton.headRadius * LEGACY_SCALE,
+                strokeWidth: currentSkeleton.strokeWidth * LEGACY_SCALE,
+                keyframes: activeClip.keyframes.map(kf => ({
+                    id: kf.id,
+                    timestamp: kf.timestamp,
+                    pose: {
+                        root: serializeNodeLegacy(kf.skeleton.root),
+                        headRadius: kf.skeleton.headRadius * LEGACY_SCALE,
+                        strokeWidth: kf.skeleton.strokeWidth * LEGACY_SCALE
+                    }
+                }))
+            };
+            return JSON.stringify(data, null, 2);
+        }
+
+        // SA3 Export Logic (Default)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const serializeNode = (node: StickmanNode): any => ({
             id: node.id,
