@@ -1,31 +1,19 @@
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, TransformControls, Sphere } from '@react-three/drei';
 import { useStickmanStore } from '../store/useStickmanStore';
 import { StickmanNode } from '../core/StickmanNode';
 import { Object3D, Vector3, Quaternion } from 'three';
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 
-// JointNode: A sphere at the joint position
+// --- Joint & Bone Components (Same as before but with Axis awareness) ---
+
 const JointNode = ({ node, isSelected, onClick, radius }: { node: StickmanNode, isSelected: boolean, onClick: () => void, radius: number }) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const meshRef = useRef<any>(null);
-  const { editMode, updateNodePosition } = useStickmanStore();
+  const { updateNodePosition, axisMode } = useStickmanStore();
 
   useFrame(() => {
     if (meshRef.current) {
-        // If transform controls are active on this node, we don't force position here
-        // to avoid fighting with the controls loop.
-        // Actually, TransformControls updates the object position.
-        // But our state (node.position) is the source of truth.
-        // If we drag, onObjectChange updates the store.
-        // We sync FROM the store here.
-
-        // However, if TransformControls is modifying this mesh directly,
-        // we should let it, but update the store.
-
-        // For simplicity: We always sync from node.position.
-        // TransformControls should update node.position via the store callback,
-        // which then reflects back here.
         meshRef.current.position.copy(node.position);
     }
   });
@@ -41,12 +29,15 @@ const JointNode = ({ node, isSelected, onClick, radius }: { node: StickmanNode, 
                 onClick();
             }}
         >
-          <meshStandardMaterial color={isSelected ? "yellow" : "white"} />
+          <meshStandardMaterial color={isSelected ? "#ffff00" : "white"} />
         </Sphere>
-        {isSelected && editMode && (
+        {isSelected && (
              <TransformControls
                 object={meshRef}
                 mode="translate"
+                showX={axisMode === 'none' || axisMode === 'x'}
+                showY={axisMode === 'none' || axisMode === 'y'}
+                showZ={axisMode === 'none' || axisMode === 'z'}
                 onObjectChange={(e) => {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const object = (e?.target as any)?.object as Object3D | undefined;
@@ -60,13 +51,10 @@ const JointNode = ({ node, isSelected, onClick, radius }: { node: StickmanNode, 
   );
 };
 
-// BoneSegment: A capsule/cylinder connecting two nodes
 const BoneSegment = ({ startNode, endNode, thickness }: { startNode: StickmanNode, endNode: StickmanNode, thickness: number }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const meshRef = useRef<any>(null);
-
-    // We reuse vectors/matrices to avoid GC
-    const axis = useMemo(() => new Vector3(0, 1, 0), []); // Cylinder default up axis
+    const axis = useMemo(() => new Vector3(0, 1, 0), []);
     const startVec = useMemo(() => new Vector3(), []);
     const endVec = useMemo(() => new Vector3(), []);
     const diffVec = useMemo(() => new Vector3(), []);
@@ -77,44 +65,28 @@ const BoneSegment = ({ startNode, endNode, thickness }: { startNode: StickmanNod
         if (meshRef.current) {
             startVec.copy(startNode.position);
             endVec.copy(endNode.position);
-
-            // Calculate distance for height (length of cylinder)
             const distance = startVec.distanceTo(endVec);
-
-            // Calculate midpoint for position
             midVec.addVectors(startVec, endVec).multiplyScalar(0.5);
-
-            // Calculate orientation
             diffVec.subVectors(endVec, startVec).normalize();
             quaternion.setFromUnitVectors(axis, diffVec);
-
-            // Apply to mesh
             meshRef.current.position.copy(midVec);
             meshRef.current.quaternion.copy(quaternion);
-            meshRef.current.scale.set(1, distance, 1); // Scale Y is the length
+            meshRef.current.scale.set(1, distance, 1);
         }
     });
 
-    // CylinderGeometry(radiusTop, radiusBottom, height, radialSegments)
-    // We set height to 1 and scale it in useFrame
     return (
-        <group>
-             <mesh ref={meshRef}>
-                <cylinderGeometry args={[thickness, thickness, 1, 16]} />
-                <meshStandardMaterial color="white" />
-            </mesh>
-        </group>
+        <mesh ref={meshRef}>
+            <cylinderGeometry args={[thickness, thickness, 1, 16]} />
+            <meshStandardMaterial color="white" />
+        </mesh>
     );
 };
 
 const StickmanRecursive = ({ node, headRadius, strokeWidth }: { node: StickmanNode, headRadius: number, strokeWidth: number }) => {
     const selectedNodeId = useStickmanStore((state) => state.selectedNodeId);
     const selectNode = useStickmanStore((state) => state.selectNode);
-
     const isSelected = selectedNodeId === node.id;
-
-    // Determine radius for this node
-    // Head node gets headRadius, others get strokeWidth (roughly same as bone thickness for joints)
     const radius = node.name === 'head' ? headRadius : strokeWidth;
 
     return (
@@ -135,25 +107,87 @@ const StickmanRecursive = ({ node, headRadius, strokeWidth }: { node: StickmanNo
     );
 };
 
-// TransformController removed as it is now integrated into JointNode
+// --- Camera Controller ---
+const CameraController = () => {
+    const { camera } = useThree();
+    const { cameraView, viewZoom, viewHeight } = useStickmanStore();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const controlsRef = useRef<any>(null);
 
-// Component to handle playback loop
-const PlaybackController = () => {
-    const { isPlaying, clips, activeClipId, currentTime, setCurrentTime, currentSkeleton } = useStickmanStore();
+    useEffect(() => {
+        // Reset or adjust camera based on view mode
+        const dist = viewZoom; // Use zoom as distance
+        const height = viewHeight;
 
-    // Derived current clip
+        if (cameraView === 'front') {
+            camera.position.set(0, height, dist);
+            camera.lookAt(0, height, 0);
+            if(controlsRef.current) controlsRef.current.reset(); // Reset orbit
+        } else if (cameraView === 'side') {
+            camera.position.set(dist, height, 0);
+            camera.lookAt(0, height, 0);
+             if(controlsRef.current) controlsRef.current.reset();
+        } else if (cameraView === 'top') {
+            camera.position.set(0, dist + height, 0);
+            camera.lookAt(0, height, 0);
+             if(controlsRef.current) controlsRef.current.reset();
+        }
+
+        // For 'free', we leave it to OrbitControls user interaction
+    }, [cameraView, viewZoom, viewHeight, camera]);
+
+    return (
+        <OrbitControls
+            ref={controlsRef}
+            makeDefault
+            enabled={cameraView === 'free'} // Disable orbit if locked views
+            enableRotate={cameraView === 'free'}
+        />
+    );
+};
+
+// --- Skin Placeholder (Visualizer) ---
+// Renders a convex hull or just a simple mesh around the skeleton center to imply "Skin"
+const SkinPlaceholder = () => {
+    const currentSkeleton = useStickmanStore(state => state.currentSkeleton);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meshRef = useRef<any>(null);
+
+    useFrame(() => {
+        if(meshRef.current) {
+             // Just position it at the root/hip for now as a "Body" placeholder
+             if(currentSkeleton.root) {
+                 meshRef.current.position.copy(currentSkeleton.root.position);
+             }
+        }
+    });
+
+    return (
+        <mesh ref={meshRef} visible={false}>
+            {/* Hidden for now, but ready for logic.
+                If we wanted to show a "Ghost" skin, we could make it visible with opacity.
+            */}
+            <boxGeometry args={[0.5, 1.5, 0.2]} />
+            <meshStandardMaterial color="cyan" transparent opacity={0.3} wireframe />
+        </mesh>
+    );
+};
+
+const SceneContent = () => {
+    const currentSkeleton = useStickmanStore((state) => state.currentSkeleton);
+    const { isPlaying, clips, activeClipId, currentTime, setCurrentTime } = useStickmanStore();
+
+    // Playback Logic
     const currentClip = clips.find(c => c.id === activeClipId);
-
     useFrame((_state, delta) => {
         if (isPlaying && currentClip) {
             let newTime = currentTime + delta;
-            if (newTime > currentClip.duration) {
-                newTime = 0; // Loop
-            }
+            if (newTime > currentClip.duration) newTime = 0;
             setCurrentTime(newTime);
 
             if (currentClip.keyframes.length >= 2) {
-                let prevKeyframe = currentClip.keyframes[0];
+                // Interpolation logic...
+                 let prevKeyframe = currentClip.keyframes[0];
                 let nextKeyframe = currentClip.keyframes[currentClip.keyframes.length - 1];
 
                 for (let i = 0; i < currentClip.keyframes.length - 1; i++) {
@@ -163,32 +197,45 @@ const PlaybackController = () => {
                         break;
                     }
                 }
-
                 if (prevKeyframe && nextKeyframe && prevKeyframe !== nextKeyframe) {
                     const range = nextKeyframe.timestamp - prevKeyframe.timestamp;
                     const alpha = range > 0 ? (newTime - prevKeyframe.timestamp) / range : 0;
-
                     const interpolated = prevKeyframe.skeleton.lerp(nextKeyframe.skeleton, alpha);
-
                      const targetNodes = interpolated.getAllNodes();
                      const currentNodes = currentSkeleton.getAllNodes();
-
                      for(let i=0; i<currentNodes.length; i++) {
                          const target = targetNodes.find(n => n.id === currentNodes[i].id);
-                         if (target) {
-                             currentNodes[i].position.copy(target.position);
-                         }
+                         if (target) currentNodes[i].position.copy(target.position);
                      }
                 }
             }
         }
     });
 
-    return null;
-}
+    return (
+        <>
+            <ambientLight intensity={0.6} />
+            <directionalLight position={[5, 10, 5]} intensity={1.2} castShadow />
+            <pointLight position={[-5, 5, -5]} intensity={0.5} />
 
+            <StickmanRecursive
+                node={currentSkeleton.root}
+                headRadius={currentSkeleton.headRadius}
+                strokeWidth={currentSkeleton.strokeWidth}
+            />
+
+            <SkinPlaceholder />
+
+            <CameraController />
+
+            <gridHelper args={[20, 20, 0x444444, 0x222222]} position={[0, 0, 0]} />
+            <axesHelper args={[1]} />
+        </>
+    );
+};
+
+// --- Main Renderer ---
 export const Stickman3DRenderer = () => {
-    const currentSkeleton = useStickmanStore((state) => state.currentSkeleton);
     const selectNode = useStickmanStore((state) => state.selectNode);
 
     return (
@@ -196,22 +243,9 @@ export const Stickman3DRenderer = () => {
             <Canvas
                 camera={{ position: [0, 2, 5], fov: 50 }}
                 onPointerMissed={() => selectNode(null)}
-                style={{ background: '#222' }}
+                style={{ background: '#1a1a1a' }} // Darker background for "Real 3D" feel
             >
-                <ambientLight intensity={0.5} />
-                <directionalLight position={[10, 10, 5]} intensity={1} />
-
-                <StickmanRecursive
-                    node={currentSkeleton.root}
-                    headRadius={currentSkeleton.headRadius}
-                    strokeWidth={currentSkeleton.strokeWidth}
-                />
-
-                <PlaybackController />
-
-                <OrbitControls makeDefault />
-                <gridHelper args={[10, 10]} />
-                <axesHelper args={[1]} />
+                <SceneContent />
             </Canvas>
         </div>
     );
