@@ -2,6 +2,9 @@ import { useStickmanStore } from '../store/useStickmanStore';
 import { Play, Pause, Plus, Film, ChevronDown, Share2, FolderOpen } from 'lucide-react';
 import clsx from 'clsx';
 import { useState, useRef, useEffect } from 'react';
+import { Share } from '@capacitor/share';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Capacitor } from '@capacitor/core';
 
 // Vertical Slider Component
 const VerticalSlider = ({ value, min, max, onChange, label }: { value: number, min: number, max: number, onChange: (v: number) => void, label: string }) => {
@@ -73,6 +76,29 @@ export const EditorUI = () => {
           const json = saveProject(format);
           const fileName = `stickman_project_${Date.now()}.${format}`;
 
+          if (Capacitor.isNativePlatform()) {
+              // Android / iOS Logic
+              try {
+                  const writeResult = await Filesystem.writeFile({
+                      path: fileName,
+                      data: json,
+                      directory: Directory.Cache,
+                      encoding: Encoding.UTF8,
+                  });
+
+                  await Share.share({
+                      title: 'Stickman Project',
+                      text: 'Here is my stickman animation project.',
+                      url: writeResult.uri,
+                      dialogTitle: 'Save Project',
+                  });
+              } catch (err) {
+                  console.error("Native Save Failed:", err);
+                  alert("Save failed: " + err);
+              }
+              return;
+          }
+
           // Step 1: Desktop "Save As" (File System Access API)
           // Use type assertion to avoid TS errors if types aren't available
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,7 +129,7 @@ export const EditorUI = () => {
               }
           }
 
-          // Step 2: Mobile / Share Sheet (navigator.share)
+          // Step 2: Mobile Web / Share Sheet (navigator.share)
           let shared = false;
           // Use text/plain for broader compatibility on Android/Share Sheet
           const blob = new Blob([json], { type: 'text/plain' });
