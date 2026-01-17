@@ -6,7 +6,7 @@ export class StickmanSkeleton {
   headRadius: number;
   strokeWidth: number;
 
-  // INCREASED DEFAULT SIZES
+  // INCREASED DEFAULT SIZES to fix "too small/thin"
   constructor(root?: StickmanNode, headRadius: number = 0.35, strokeWidth: number = 0.1) {
     if (root) {
       this.root = root;

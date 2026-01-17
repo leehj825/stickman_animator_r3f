@@ -1,5 +1,5 @@
 import { useStickmanStore } from '../store/useStickmanStore';
-import { Play, Pause, Save, FolderOpen, Plus, MousePointer2, Film, Pencil, Check, ChevronDown, Share2 } from 'lucide-react';
+import { Play, Pause, FolderOpen, Plus, MousePointer2, Film, Pencil, Check, ChevronDown, Share2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useState, useRef, useEffect } from 'react';
 
@@ -34,6 +34,7 @@ export const EditorUI = () => {
       const file = new File([json], fileName, { type: 'application/json' });
 
       // Try Native Share (Mobile/Drive support)
+      // Note: This often requires HTTPS or localhost to work on mobile
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
           try {
               await navigator.share({

@@ -43,7 +43,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
   const defaultClip = createDefaultClip();
 
   return {
-    currentSkeleton: new StickmanSkeleton(), // Uses new defaults from StickmanSkeleton.ts
+    currentSkeleton: new StickmanSkeleton(),
     clips: [defaultClip],
     activeClipId: defaultClip.id,
     isPlaying: false,
@@ -126,7 +126,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
             const data = JSON.parse(json);
             const isSa3 = data.format === 'sa3' || !!data.skin || !!data.polygons;
 
-            // FIX: Use 0.05 for SAP to shrink it drastically (since you said it was too large)
+            // SCALE FIX: 0.05 for SAP files to match new default size
             const SCALE = isSa3 ? 1.0 : 0.05;
             const INVERT_Y = isSa3 ? 1.0 : -1.0;
 
