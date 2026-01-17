@@ -71,8 +71,8 @@ export const EditorUI = () => {
   const handleSave = async (format: 'sa3' | 'sap' = 'sa3') => {
       try {
           const json = saveProject(format);
-          // Use Blob first - safest for download fallback and file creation
-          const blob = new Blob([json], { type: 'application/json' });
+          // Use text/plain for broad compatibility especially with Android/Share Sheet
+          const blob = new Blob([json], { type: 'text/plain' });
           const fileName = `stickman_project_${Date.now()}.${format}`;
 
           let shared = false;
@@ -80,8 +80,8 @@ export const EditorUI = () => {
           // Attempt Share if API exists
           if (navigator.share && navigator.canShare) {
              try {
-                 // Construct File for sharing
-                 const file = new File([blob], fileName, { type: 'application/json' });
+                 // Construct File for sharing with text/plain mime type
+                 const file = new File([blob], fileName, { type: 'text/plain' });
                  if (navigator.canShare({ files: [file] })) {
                      await navigator.share({
                          files: [file],
@@ -116,7 +116,8 @@ export const EditorUI = () => {
   const handleLoad = () => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.json,.sap,.sa3,application/json';
+      // Use */* to allow picking any file (fixes grayed out files on Google Drive/Android)
+      input.accept = '*/*';
       input.onchange = (e) => {
           const file = (e.target as HTMLInputElement).files?.[0];
           if (file) {
