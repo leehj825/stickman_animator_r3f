@@ -29,34 +29,48 @@ export const EditorUI = () => {
   }, []);
 
   const handleSave = async () => {
-      const json = saveProject('sa3');
-      const fileName = `stickman_project_${Date.now()}.sa3`;
-      const file = new File([json], fileName, { type: 'application/json' });
+      try {
+          const json = saveProject('sa3');
+          // Use Blob first - safest for download fallback and file creation
+          const blob = new Blob([json], { type: 'application/json' });
+          const fileName = `stickman_project_${Date.now()}.sa3`;
 
-      // Try Native Share (Mobile/Drive support)
-      // Note: This often requires HTTPS or localhost to work on mobile
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-              await navigator.share({
-                  title: 'Stickman Project',
-                  text: 'Here is my stickman animation project.',
-                  files: [file],
-              });
-              return; // Success
-          } catch (error) {
-              console.warn("Share failed or cancelled, falling back to download", error);
+          let shared = false;
+
+          // Attempt Share if API exists
+          if (navigator.share && navigator.canShare) {
+             try {
+                 // Construct File for sharing
+                 const file = new File([blob], fileName, { type: 'application/json' });
+                 if (navigator.canShare({ files: [file] })) {
+                     await navigator.share({
+                         files: [file],
+                         title: 'Stickman Project',
+                         text: 'Here is my stickman animation project.',
+                     });
+                     shared = true;
+                 }
+             } catch (err) {
+                 console.warn("Share failed/cancelled:", err);
+                 // Proceed to fallback download
+             }
           }
-      }
 
-      // Fallback: Direct Download
-      const url = URL.createObjectURL(file);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+          if (!shared) {
+              // Fallback: Direct Download
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = fileName;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+          }
+      } catch (e) {
+          console.error("Save failed:", e);
+          alert("Save failed: " + e);
+      }
   };
 
   const handleLoad = () => {
