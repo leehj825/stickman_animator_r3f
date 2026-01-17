@@ -1,9 +1,20 @@
 {
   "name": "stickman-animator-r3f",
-  "private": true,
+  "private": false,
   "version": "0.0.1",
   "type": "module",
-  "main": "main.js",
+  "main": "./dist/stickman-animator-r3f.js",
+  "module": "./dist/stickman-animator-r3f.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/stickman-animator-r3f.mjs",
+      "require": "./dist/stickman-animator-r3f.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -17,16 +28,18 @@
     "@capacitor/filesystem": "^5.2.2",
     "@capacitor/ios": "^5.7.0",
     "@capacitor/share": "^5.0.8",
-    "@react-three/drei": "^9.99.0",
-    "@react-three/fiber": "^8.15.16",
     "clsx": "^2.1.0",
     "lucide-react": "^0.330.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
     "tailwind-merge": "^2.2.1",
-    "three": "^0.161.0",
     "uuid": "^9.0.1",
     "zustand": "^4.5.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "three": "^0.161.0",
+    "@react-three/fiber": "^8.15.16",
+    "@react-three/drei": "^9.99.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^5.7.0",
@@ -47,6 +60,12 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.2.2",
     "vite": "^5.1.4",
-    "vitest": "^4.0.17"
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^4.0.17",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "three": "^0.161.0",
+    "@react-three/fiber": "^8.15.16",
+    "@react-three/drei": "^9.99.0"
   }
 }
