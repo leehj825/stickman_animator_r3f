@@ -10,13 +10,21 @@ import { useRef, useMemo, useEffect } from 'react';
 const JointNode = ({ node, isSelected, onClick, radius }: { node: StickmanNode, isSelected: boolean, onClick: () => void, radius: number }) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const meshRef = useRef<any>(null);
-  const { updateNodePosition, axisMode } = useStickmanStore();
+  const { updateNodePosition, axisMode, cameraView } = useStickmanStore();
 
   useFrame(() => {
     if (meshRef.current) {
         meshRef.current.position.copy(node.position);
     }
   });
+
+  // Restrict axes based on view mode (2D perspective logic)
+  // Front (Z-view): Lock Z (depth), allow X, Y.
+  // Side (X-view): Lock X (depth), allow Y, Z.
+  // Top (Y-view): Lock Y (depth), allow X, Z.
+  const canMoveX = (axisMode === 'none' || axisMode === 'x') && cameraView !== 'side';
+  const canMoveY = (axisMode === 'none' || axisMode === 'y') && cameraView !== 'top';
+  const canMoveZ = (axisMode === 'none' || axisMode === 'z') && cameraView !== 'front';
 
   return (
     <>
@@ -35,9 +43,9 @@ const JointNode = ({ node, isSelected, onClick, radius }: { node: StickmanNode, 
              <TransformControls
                 object={meshRef}
                 mode="translate"
-                showX={axisMode === 'none' || axisMode === 'x'}
-                showY={axisMode === 'none' || axisMode === 'y'}
-                showZ={axisMode === 'none' || axisMode === 'z'}
+                showX={canMoveX}
+                showY={canMoveY}
+                showZ={canMoveZ}
                 onObjectChange={(e) => {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const object = (e?.target as any)?.object as Object3D | undefined;
@@ -119,29 +127,49 @@ const CameraController = () => {
         const dist = viewZoom; // Use zoom as distance
         const height = viewHeight;
 
-        if (cameraView === 'front') {
-            camera.position.set(0, height, dist);
-            camera.lookAt(0, height, 0);
-            if(controlsRef.current) controlsRef.current.reset(); // Reset orbit
-        } else if (cameraView === 'side') {
-            camera.position.set(dist, height, 0);
-            camera.lookAt(0, height, 0);
-             if(controlsRef.current) controlsRef.current.reset();
-        } else if (cameraView === 'top') {
-            camera.position.set(0, dist + height, 0);
-            camera.lookAt(0, height, 0);
-             if(controlsRef.current) controlsRef.current.reset();
+        // In Orthographic mode, zoom works inversely to distance (magnification).
+        // Larger viewZoom (distance) -> Smaller Orthographic Zoom (smaller object)
+        // Base scale factor determined experimentally to match approx field of view.
+        const orthoZoom = 200 / Math.max(0.1, dist);
+
+        if (camera.type === 'OrthographicCamera') {
+            camera.zoom = orthoZoom;
+            camera.updateProjectionMatrix();
         }
 
-        // For 'free', we leave it to OrbitControls user interaction
+        // Helper to update controls target without resetting camera position
+        const updateTarget = () => {
+            if (controlsRef.current) {
+                controlsRef.current.target.set(0, height, 0);
+                controlsRef.current.update();
+            }
+        };
+
+        if (cameraView === 'front') {
+            camera.position.set(0, height, 20); // Fixed distance for ortho (clipping safety)
+            camera.lookAt(0, height, 0);
+            updateTarget();
+        } else if (cameraView === 'side') {
+            camera.position.set(20, height, 0);
+            camera.lookAt(0, height, 0);
+            updateTarget();
+        } else if (cameraView === 'top') {
+            camera.position.set(0, 20 + height, 0);
+            camera.lookAt(0, height, 0);
+            updateTarget();
+        }
+
+        // For 'free', we leave it to OrbitControls user interaction (Perspective)
     }, [cameraView, viewZoom, viewHeight, camera]);
 
     return (
         <OrbitControls
             ref={controlsRef}
             makeDefault
-            enabled={cameraView === 'free'} // Disable orbit if locked views
-            enableRotate={cameraView === 'free'}
+            enabled={true} // Always enable controls to allow pan/zoom
+            enableRotate={cameraView === 'free'} // Only allow rotation in free mode
+            enablePan={true}
+            enableZoom={true}
         />
     );
 };
@@ -236,12 +264,17 @@ const SceneContent = () => {
 
 // --- Main Renderer ---
 export const Stickman3DRenderer = () => {
-    const selectNode = useStickmanStore((state) => state.selectNode);
+    const { selectNode, cameraView } = useStickmanStore();
+    const isOrthographic = cameraView !== 'free';
 
     return (
         <div className="w-full h-full">
             <Canvas
-                camera={{ position: [0, 2, 5], fov: 50 }}
+                orthographic={isOrthographic}
+                camera={isOrthographic
+                    ? { zoom: 40, position: [0, 2, 20] }
+                    : { position: [0, 2, 5], fov: 50 }
+                }
                 onPointerMissed={() => selectNode(null)}
                 style={{ background: '#1a1a1a' }} // Darker background for "Real 3D" feel
             >
