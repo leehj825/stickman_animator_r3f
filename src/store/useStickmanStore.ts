@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import { StickmanSkeleton } from '../core/StickmanSkeleton';
+import { StickmanSkeleton, DEFAULT_HEAD_RADIUS, DEFAULT_STROKE_WIDTH } from '../core/StickmanSkeleton';
 import { StickmanClip, StickmanKeyframe } from '../core/StickmanKeyframe';
 import { StickmanNode } from '../core/StickmanNode';
 import { v4 as uuidv4 } from 'uuid';
 import { Vector3, Quaternion } from 'three';
+
+export type ViewMode = 'FREE' | 'FRONT' | 'SIDE' | 'TOP';
 
 interface StickmanState {
   currentSkeleton: StickmanSkeleton;
@@ -14,12 +16,13 @@ interface StickmanState {
   editMode: boolean;
   selectedNodeId: string | null;
   modeType: 'pose' | 'animate';
+  viewMode: ViewMode;
 
   // New SA3 Data
   skin: any;
   polygons: any;
 
-  // View State
+  // View State (Legacy - kept for compatibility but superseded by viewMode)
   cameraView: 'front' | 'side' | 'top' | 'free';
   axisMode: 'none' | 'x' | 'y' | 'z';
   viewZoom: number;
@@ -30,11 +33,13 @@ interface StickmanState {
   setEditMode: (enabled: boolean) => void;
   selectNode: (id: string | null) => void;
   updateNodePosition: (id: string, position: Vector3) => void;
+  updateSkeletonProperties: (props: { headRadius?: number, strokeWidth?: number }) => void;
   addKeyframe: () => void;
   loadProject: (json: string) => void;
   saveProject: (format?: 'sap' | 'sa3') => string;
   setCurrentTime: (time: number) => void;
   setModeType: (mode: 'pose' | 'animate') => void;
+  setViewMode: (mode: ViewMode) => void;
 
   // UI Actions
   setCameraView: (view: 'front' | 'side' | 'top' | 'free') => void;
@@ -191,6 +196,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     skin: null,
     polygons: null,
     modeType: 'pose',
+    viewMode: 'FREE',
 
     // View Defaults
     cameraView: 'free',
@@ -202,6 +208,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     setEditMode: (enabled) => set({ editMode: enabled }),
     selectNode: (id) => set({ selectedNodeId: id }),
     setModeType: (mode) => set({ modeType: mode }),
+    setViewMode: (mode) => set({ viewMode: mode }),
 
     setCameraView: (view) => set({ cameraView: view }),
     setAxisMode: (mode) => set({ axisMode: mode }),
@@ -209,15 +216,46 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
     setViewHeight: (height) => set({ viewHeight: height }),
 
     setHeadRadius: (radius) => {
-        const { currentSkeleton } = get();
-        currentSkeleton.headRadius = radius;
-        set({ currentSkeleton: currentSkeleton });
+        // Deprecated, use updateSkeletonProperties
+        get().updateSkeletonProperties({ headRadius: radius });
     },
 
     setStrokeWidth: (width) => {
-        const { currentSkeleton } = get();
-        currentSkeleton.strokeWidth = width;
-        set({ currentSkeleton: currentSkeleton });
+        // Deprecated, use updateSkeletonProperties
+        get().updateSkeletonProperties({ strokeWidth: width });
+    },
+
+    updateSkeletonProperties: ({ headRadius, strokeWidth }) => {
+        set((state) => {
+            const currentHead = headRadius ?? state.currentSkeleton.headRadius;
+            const currentStroke = strokeWidth ?? state.currentSkeleton.strokeWidth;
+
+            // 1. Update Current Skeleton (Visual)
+            const newCurrentSkeleton = new StickmanSkeleton(
+                state.currentSkeleton.root.clone(),
+                currentHead,
+                currentStroke
+            );
+
+            // 2. Update ALL Keyframes in ALL Clips
+            const updatedClips = state.clips.map(clip => ({
+                ...clip,
+                keyframes: clip.keyframes.map(kf => {
+                    const newKfSkeleton = kf.skeleton.clone();
+                    newKfSkeleton.headRadius = currentHead;
+                    newKfSkeleton.strokeWidth = currentStroke;
+                    return {
+                        ...kf,
+                        skeleton: newKfSkeleton
+                    };
+                })
+            }));
+
+            return {
+                currentSkeleton: newCurrentSkeleton,
+                clips: updatedClips
+            };
+        });
     },
 
     setActiveClip: (id) => {
@@ -380,6 +418,10 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                 }
             }
 
+            // Adjust file properties with final SCALE
+            const finalHead = (data.headRadius || DEFAULT_HEAD_RADIUS) * (isSa3 ? 1 : SCALE);
+            const finalStroke = (data.strokeWidth || DEFAULT_STROKE_WIDTH) * (isSa3 ? 1 : SCALE);
+
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const reconstructNode = (nodeData: any): StickmanNode => {
@@ -413,8 +455,8 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
                     // Scale radius and stroke width too
                     const skeleton = new StickmanSkeleton(
                         undefined,
-                        (skelData.headRadius || data.headRadius || 0.1) * SCALE,
-                        (skelData.strokeWidth || data.strokeWidth || 0.02) * SCALE
+                        finalHead,
+                        finalStroke
                     );
                     skeleton.root = reconstructNode(skelData.root || skelData);
                     return {
@@ -439,7 +481,7 @@ export const useStickmanStore = create<StickmanState>((set, get) => {
             const firstClip = reconstructedClips[0];
             const startSkel = firstClip.keyframes.length > 0
                 ? firstClip.keyframes[0].skeleton.clone()
-                : new StickmanSkeleton();
+                : new StickmanSkeleton(undefined, finalHead, finalStroke);
 
             set({
                 clips: reconstructedClips,

@@ -1,13 +1,16 @@
 import { Vector3 } from 'three';
 import { StickmanNode } from './StickmanNode';
 
+export const DEFAULT_HEAD_RADIUS = 0.35;
+export const DEFAULT_STROKE_WIDTH = 0.1;
+
 export class StickmanSkeleton {
   root: StickmanNode;
   headRadius: number;
   strokeWidth: number;
 
   // INCREASED DEFAULT SIZES to fix "too small/thin"
-  constructor(root?: StickmanNode, headRadius: number = 0.35, strokeWidth: number = 0.1) {
+  constructor(root?: StickmanNode, headRadius: number = DEFAULT_HEAD_RADIUS, strokeWidth: number = DEFAULT_STROKE_WIDTH) {
     if (root) {
       this.root = root;
     } else {
