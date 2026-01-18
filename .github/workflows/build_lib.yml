@@ -1,0 +1,42 @@
+name: Build Library
+
+# Run this workflow on push to main or pull requests
+on:
+  push:
+    branches: [ "main" ]
+    # Optional: Only run if files in src/runtime change
+    paths:
+      - 'src/runtime/**'
+      - 'package.json'
+      - 'vite.lib.config.ts'
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-library:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # This runs the special command we defined earlier
+      - name: Build Library
+        run: npm run build:lib
+
+      # Save the 'dist-lib' folder so you can download it from GitHub
+      - name: Upload Library Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stickman-animator-lib
+          path: dist-lib/
+          retention-days: 5
